@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
 from matagent.nodes import (
@@ -9,6 +10,7 @@ from matagent.nodes import (
     create_tool_decision_node,
     create_tool_execution_node,
     generate_report,
+    initialize_run,
     plan_screening,
     rank_candidates,
     route_after_parsing,
@@ -37,6 +39,7 @@ def build_graph(
     data_path: Path | None = None,
     requirement_parser: RequirementParser | None = None,
     tool_selector: ToolSelector | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
 ):
     """Build the graph with caller-selectable data and parser backends."""
 
@@ -56,6 +59,7 @@ def build_graph(
     tool_specs = registry.tool_specs()
 
     builder = StateGraph(AgentState)
+    builder.add_node("initialize_run", initialize_run)
     builder.add_node(
         "parse_requirements",
         create_requirement_parser_node(parser),
@@ -69,7 +73,8 @@ def build_graph(
     builder.add_node("rank_candidates", rank_candidates)
     builder.add_node("generate_report", generate_report)
 
-    builder.add_edge(START, "parse_requirements")
+    builder.add_edge(START, "initialize_run")
+    builder.add_edge("initialize_run", "parse_requirements")
     builder.add_conditional_edges(
         "parse_requirements",
         route_after_parsing,
@@ -97,4 +102,4 @@ def build_graph(
     )
     builder.add_edge("rank_candidates", "generate_report")
     builder.add_edge("generate_report", END)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)

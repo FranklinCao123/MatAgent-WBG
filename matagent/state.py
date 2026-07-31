@@ -10,8 +10,8 @@ class AgentState(TypedDict, total=False):
     """Data accumulated while a material-screening request is processed."""
 
     user_query: str
-    requirements: ScreeningRequirements
-    ranking_plan: RankingPlan
+    requirements: ScreeningRequirements | None
+    ranking_plan: RankingPlan | None
     pending_tool_calls: list[ToolCallRequest]
     tool_results: list[ToolExecutionResult]
     tool_iteration: int

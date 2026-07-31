@@ -384,7 +384,7 @@ class WorkflowTests(unittest.TestCase):
             result = build_graph(data_path).invoke(self.initial_state())
 
         self.assertEqual(result["candidates"], [])
-        self.assertNotIn("ranked_candidates", result)
+        self.assertEqual(result["ranked_candidates"], [])
         self.assertIn("No mock candidates found", result["final_report"])
         self.assertEqual(
             [entry["step"] for entry in result["tool_history"]],
@@ -412,7 +412,8 @@ class WorkflowTests(unittest.TestCase):
             requirement_parser=FailingRequirementParser()
         ).invoke(self.initial_state())
 
-        self.assertNotIn("candidates", result)
+        self.assertEqual(result["candidates"], [])
+        self.assertEqual(result["ranked_candidates"], [])
         self.assertIn("Test parser failure", result["final_report"])
         self.assertEqual(
             [entry["step"] for entry in result["tool_history"]],

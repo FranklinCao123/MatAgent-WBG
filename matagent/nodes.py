@@ -15,6 +15,23 @@ from matagent.state import AgentState
 from matagent.tools import ToolExecutionError, ToolRegistry
 
 
+def initialize_run(state: AgentState) -> dict[str, Any]:
+    """Clear transient values that may remain in a reused checkpoint thread."""
+
+    return {
+        "requirements": None,
+        "ranking_plan": None,
+        "pending_tool_calls": [],
+        "tool_results": [],
+        "tool_iteration": 0,
+        "candidates": [],
+        "ranked_candidates": [],
+        "tool_history": [],
+        "errors": [],
+        "status": "started",
+    }
+
+
 def create_requirement_parser_node(
     parser: RequirementParser,
 ) -> Callable[[AgentState], dict[str, Any]]:

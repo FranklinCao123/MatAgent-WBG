@@ -35,6 +35,9 @@ outputs/
 logs/
 *.log
 
+# Local LangGraph checkpoint database
+.matagent/
+
 # OS files
 .DS_Store
 Thumbs.db

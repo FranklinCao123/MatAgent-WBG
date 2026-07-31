@@ -122,6 +122,39 @@ scientific ranking method. It records inferred domain requirements and creates
 normalized weights that sum to 1.0. The ranking node consumes this plan instead
 of fixed weights.
 
+## Local checkpoint persistence
+
+Pass a thread ID to save every LangGraph super-step in a lightweight local
+SQLite database:
+
+```powershell
+python -m matagent.cli --mode offline --thread-id demo-001 `
+  --show-checkpoints "寻找适合高温功率电子器件的材料"
+```
+
+The default database path is:
+
+```text
+.matagent/checkpoints.sqlite3
+```
+
+The `.matagent/` directory is ignored by Git. A custom path can be supplied:
+
+```powershell
+python -m matagent.cli --thread-id demo-001 `
+  --checkpoint-db D:\path\to\checkpoints.sqlite3 "query"
+```
+
+Each checkpoint records the current status and the next node. Reusing a thread
+preserves its checkpoint history, while `initialize_run` clears transient
+candidate, tool-call, error, and report state before a new run. Different
+thread IDs remain isolated.
+
+Checkpointing currently provides durable execution history, not conversational
+follow-up understanding. Message history and requirement merging will be added
+separately. The local SQLite file is not encrypted and can contain user queries,
+tool results, and generated reports; it never stores the LLM API key.
+
 ## Test
 
 Tests use Python's standard library and fake DeepSeek clients, so they do not
