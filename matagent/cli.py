@@ -3,6 +3,11 @@
 import argparse
 import json
 
+from matagent.config import (
+    ConfigurationError,
+    LLMSettings,
+    build_requirement_parser,
+)
 from matagent.graph import build_graph
 
 
@@ -20,13 +25,25 @@ def main() -> None:
         help="Natural-language material screening request.",
     )
     parser.add_argument(
+        "--mode",
+        choices=("offline", "deepseek"),
+        default=None,
+        help="Requirement parser backend; defaults to MATAGENT_LLM_MODE or offline.",
+    )
+    parser.add_argument(
         "--show-trace",
         action="store_true",
         help="Print the tool execution history after the report.",
     )
     args = parser.parse_args()
 
-    graph = build_graph()
+    try:
+        settings = LLMSettings.from_environment(mode=args.mode)
+        requirement_parser = build_requirement_parser(settings)
+    except (ConfigurationError, RuntimeError) as error:
+        parser.error(str(error))
+
+    graph = build_graph(requirement_parser=requirement_parser)
     result = graph.invoke(
         {
             "user_query": args.query,

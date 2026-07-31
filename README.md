@@ -17,11 +17,18 @@ No LLM API, GPU, scientific model, vector database, or server is required.
 All material property values are illustrative mock data and are not suitable
 for scientific or engineering decisions.
 
+The requirement-parsing node now supports two modes:
+
+- `offline`: deterministic local parser; no network or API cost.
+- `deepseek`: DeepSeek JSON Output followed by Pydantic validation.
+
 ## Project structure
 
 ```text
 matagent/
 ├── schemas.py               # Strict Pydantic data contracts
+├── config.py                # Environment-based LLM configuration
+├── llm/                     # Offline and DeepSeek requirement parsers
 ├── state.py                 # Shared LangGraph state
 ├── nodes.py                 # Workflow node logic
 ├── graph.py                 # Graph construction and conditional routing
@@ -47,6 +54,29 @@ Run with the default query:
 
 ```powershell
 python prototype.py
+```
+
+The default mode is offline. To use DeepSeek, copy `.env.example` to `.env`,
+insert a newly created API key locally, and never commit `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Then run:
+
+```powershell
+python -m matagent.cli --mode deepseek `
+  "寻找带隙大于 3 eV、适合高温功率器件并优先考虑高热导率的材料"
+```
+
+Configuration variables:
+
+```text
+MATAGENT_LLM_MODE=deepseek
+MATAGENT_LLM_API_KEY=<local secret>
+MATAGENT_LLM_MODEL=deepseek-v4-flash
+MATAGENT_LLM_BASE_URL=https://api.deepseek.com
 ```
 
 Run with a custom query and display the execution trace:

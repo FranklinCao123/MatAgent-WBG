@@ -4,42 +4,66 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from matagent.schemas import ScreeningRequirements
+from matagent.llm import (
+    RequirementParser,
+    RequirementParsingError,
+    RuleBasedRequirementParser,
+)
 from matagent.state import AgentState
 from matagent.tools import MockMaterialSearchTool
 
 
-def parse_requirements(state: AgentState) -> dict[str, Any]:
-    """Convert a user query into deterministic demonstration criteria."""
+def create_requirement_parser_node(
+    parser: RequirementParser,
+) -> Callable[[AgentState], dict[str, Any]]:
+    """Inject an offline or LLM-backed parser into a graph node."""
 
-    query = state["user_query"].lower()
-    is_power_electronics = any(
-        term in query for term in ("power", "功率", "power electronics", "电力电子")
-    )
-    is_high_temperature = any(
-        term in query for term in ("high temperature", "high-temperature", "高温")
-    )
+    def parse_requirements_with_parser(state: AgentState) -> dict[str, Any]:
+        history = list(state.get("tool_history", []))
+        try:
+            requirements = parser.parse(state["user_query"])
+        except RequirementParsingError as error:
+            history.append(
+                {
+                    "step": "parse_requirements",
+                    "parser": parser.name,
+                    "status": "error",
+                    "error": str(error),
+                }
+            )
+            return {
+                "errors": [*state.get("errors", []), str(error)],
+                "status": "requirement_error",
+                "tool_history": history,
+            }
 
-    requirements = ScreeningRequirements(
-        application="power electronics" if is_power_electronics else "unspecified",
-        minimum_band_gap_ev=2.0,
-        prefer_high_thermal_conductivity=is_high_temperature,
-        prefer_high_breakdown_field=is_power_electronics,
-        assumptions=[
-            "Wide-bandgap screening uses a demonstration threshold of 2.0 eV.",
-            "Cost, manufacturability, and supply-chain constraints are not yet evaluated.",
-        ],
-    )
-
-    history = list(state.get("tool_history", []))
-    history.append(
-        {
-            "step": "parse_requirements",
-            "type": "deterministic_parser",
-            "result": requirements.model_dump(mode="json"),
+        history.append(
+            {
+                "step": "parse_requirements",
+                "parser": parser.name,
+                "status": "success",
+                "result": requirements.model_dump(mode="json"),
+            }
+        )
+        return {
+            "requirements": requirements,
+            "status": "requirements_parsed",
+            "tool_history": history,
         }
-    )
-    return {"requirements": requirements, "tool_history": history}
+
+    return parse_requirements_with_parser
+
+
+_DEFAULT_PARSER = RuleBasedRequirementParser()
+parse_requirements = create_requirement_parser_node(_DEFAULT_PARSER)
+
+
+def route_after_parsing(state: AgentState) -> str:
+    """Stop before tool use when requirement parsing failed."""
+
+    if state.get("errors") or not state.get("requirements"):
+        return "report"
+    return "search"
 
 
 def create_material_search_node(
@@ -148,7 +172,7 @@ def rank_candidates(state: AgentState) -> dict[str, Any]:
 def generate_report(state: AgentState) -> dict[str, str]:
     """Generate a compact Markdown report from the current graph state."""
 
-    requirements = state["requirements"]
+    requirements = state.get("requirements")
     ranked = state.get("ranked_candidates", [])
     errors = state.get("errors", [])
 
@@ -161,14 +185,27 @@ def generate_report(state: AgentState) -> dict[str, str]:
         "## Interpreted request",
         "",
         f"- Original query: {state['user_query']}",
-        f"- Application: {requirements.application}",
-        f"- Minimum demonstration band gap: "
-        f"{requirements.minimum_band_gap_ev} eV",
-        "",
-        "## Workflow status",
-        "",
-        f"- Status before report generation: {state.get('status', 'unknown')}",
     ]
+
+    if requirements is None:
+        lines.append("- Structured requirements: unavailable")
+    else:
+        lines.extend(
+            [
+                f"- Application: {requirements.application}",
+                f"- Minimum demonstration band gap: "
+                f"{requirements.minimum_band_gap_ev} eV",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Workflow status",
+            "",
+            f"- Status before report generation: {state.get('status', 'unknown')}",
+        ]
+    )
 
     if errors:
         lines.extend(

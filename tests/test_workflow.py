@@ -4,12 +4,77 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 
 from matagent.graph import build_graph
+from matagent.llm import DeepSeekRequirementParser, RequirementParsingError
 from matagent.nodes import parse_requirements, route_after_search
 from matagent.schemas import ScreeningRequirements
+
+
+class FakeDeepSeekClient:
+    def __init__(self, content: str) -> None:
+        self.last_request = None
+        self._content = content
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=self._create),
+        )
+
+    def _create(self, **kwargs):
+        self.last_request = kwargs
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content=self._content),
+                )
+            ]
+        )
+
+
+class FailingRequirementParser:
+    name = "failing_test_parser"
+
+    def parse(self, user_query: str) -> ScreeningRequirements:
+        raise RequirementParsingError("Test parser failure.")
+
+
+class DeepSeekRequirementParserTests(unittest.TestCase):
+    def test_json_response_becomes_validated_requirements(self) -> None:
+        client = FakeDeepSeekClient(
+            json.dumps(
+                {
+                    "application": "high-temperature power electronics",
+                    "minimum_band_gap_ev": 3.0,
+                    "prefer_high_thermal_conductivity": True,
+                    "prefer_high_breakdown_field": True,
+                    "assumptions": [],
+                }
+            )
+        )
+        parser = DeepSeekRequirementParser(
+            api_key="test-key-not-real",
+            client=client,
+        )
+
+        requirements = parser.parse("Find materials with band gap above 3 eV")
+
+        self.assertEqual(requirements.minimum_band_gap_ev, 3.0)
+        self.assertEqual(
+            client.last_request["response_format"],
+            {"type": "json_object"},
+        )
+        self.assertEqual(client.last_request["model"], "deepseek-v4-flash")
+
+    def test_invalid_json_is_reported_as_parsing_error(self) -> None:
+        parser = DeepSeekRequirementParser(
+            api_key="test-key-not-real",
+            client=FakeDeepSeekClient("not-json"),
+        )
+
+        with self.assertRaises(RequirementParsingError):
+            parser.parse("Find a material")
 
 
 class ScreeningRequirementsTests(unittest.TestCase):
@@ -103,6 +168,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(result["errors"])
         self.assertIn("failed", result["final_report"])
         self.assertEqual(result["tool_history"][-1]["status"], "error")
+        self.assertEqual(result["status"], "completed")
+
+    def test_requirement_parser_failure_skips_material_tool(self) -> None:
+        result = build_graph(
+            requirement_parser=FailingRequirementParser()
+        ).invoke(self.initial_state())
+
+        self.assertNotIn("candidates", result)
+        self.assertIn("Test parser failure", result["final_report"])
+        self.assertEqual(
+            [entry["step"] for entry in result["tool_history"]],
+            ["parse_requirements"],
+        )
         self.assertEqual(result["status"], "completed")
 
 
