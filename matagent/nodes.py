@@ -9,6 +9,7 @@ from matagent.llm import (
     RequirementParsingError,
     RuleBasedRequirementParser,
 )
+from matagent.schemas import RankingPlan, RankingWeights
 from matagent.state import AgentState
 from matagent.tools import MockMaterialSearchTool
 
@@ -63,7 +64,93 @@ def route_after_parsing(state: AgentState) -> str:
 
     if state.get("errors") or not state.get("requirements"):
         return "report"
-    return "search"
+    return "plan"
+
+
+def plan_screening(state: AgentState) -> dict[str, Any]:
+    """Translate parsed requirements into an auditable ranking policy."""
+
+    requirements = state["requirements"]
+    application = requirements.application.casefold()
+    is_high_temperature_application = any(
+        term in application for term in ("high-temperature", "high temperature", "高温")
+    )
+    is_power_application = any(
+        term in application for term in ("power", "功率", "电力电子")
+    )
+
+    prioritize_thermal = (
+        requirements.prefer_high_thermal_conductivity
+        or is_high_temperature_application
+    )
+    prioritize_breakdown = (
+        requirements.prefer_high_breakdown_field or is_power_application
+    )
+
+    raw_weights = {
+        "band_gap_ev": 1.0,
+        "thermal_conductivity_w_mk": 1.5 if prioritize_thermal else 1.0,
+        "breakdown_field_mv_cm": 1.5 if prioritize_breakdown else 1.0,
+    }
+    total = sum(raw_weights.values())
+    weights = RankingWeights(
+        band_gap_ev=raw_weights["band_gap_ev"] / total,
+        thermal_conductivity_w_mk=(
+            raw_weights["thermal_conductivity_w_mk"] / total
+        ),
+        breakdown_field_mv_cm=(
+            raw_weights["breakdown_field_mv_cm"] / total
+        ),
+    )
+
+    inferred_requirements = []
+    if (
+        is_high_temperature_application
+        and not requirements.prefer_high_thermal_conductivity
+    ):
+        inferred_requirements.append(
+            "High thermal conductivity was inferred from the high-temperature application."
+        )
+    if is_power_application and not requirements.prefer_high_breakdown_field:
+        inferred_requirements.append(
+            "High breakdown field was inferred from the power-device application."
+        )
+
+    plan = RankingPlan(
+        weights=weights,
+        rationale={
+            "band_gap_ev": (
+                "Band gap is retained as a ranking factor after applying the hard "
+                f"minimum threshold of {requirements.minimum_band_gap_ev} eV."
+            ),
+            "thermal_conductivity_w_mk": (
+                "Thermal conductivity receives extra demonstration weight."
+                if prioritize_thermal
+                else "Thermal conductivity receives the baseline demonstration weight."
+            ),
+            "breakdown_field_mv_cm": (
+                "Breakdown field receives extra demonstration weight."
+                if prioritize_breakdown
+                else "Breakdown field receives the baseline demonstration weight."
+            ),
+        },
+        inferred_requirements=inferred_requirements,
+    )
+
+    history = list(state.get("tool_history", []))
+    history.append(
+        {
+            "step": "plan_screening",
+            "type": "deterministic_domain_policy",
+            "status": "success",
+            "result": plan.model_dump(mode="json"),
+        }
+    )
+    return {
+        "ranking_plan": plan,
+        "status": "screening_planned",
+        "tool_history": history,
+    }
 
 
 def create_material_search_node(
@@ -136,11 +223,7 @@ def rank_candidates(state: AgentState) -> dict[str, Any]:
             item["breakdown_field_mv_cm"] for item in candidates
         ),
     }
-    weights = {
-        "band_gap_ev": 0.30,
-        "thermal_conductivity_w_mk": 0.35,
-        "breakdown_field_mv_cm": 0.35,
-    }
+    weights = state["ranking_plan"].weights.model_dump()
 
     ranked = []
     for material in candidates:
@@ -173,6 +256,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
     """Generate a compact Markdown report from the current graph state."""
 
     requirements = state.get("requirements")
+    ranking_plan = state.get("ranking_plan")
     ranked = state.get("ranked_candidates", [])
     errors = state.get("errors", [])
 
@@ -193,7 +277,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
         lines.extend(
             [
                 f"- Application: {requirements.application}",
-                f"- Minimum demonstration band gap: "
+                f"- Minimum band-gap requirement: "
                 f"{requirements.minimum_band_gap_ev} eV",
             ]
         )
@@ -214,6 +298,25 @@ def generate_report(state: AgentState) -> dict[str, str]:
                 *[f"  - {error}" for error in errors],
             ]
         )
+
+    if ranking_plan is not None:
+        lines.extend(
+            [
+                "",
+                "## Demonstration ranking plan",
+                "",
+                f"- Band-gap weight: {ranking_plan.weights.band_gap_ev:.1%}",
+                "- Thermal-conductivity weight: "
+                f"{ranking_plan.weights.thermal_conductivity_w_mk:.1%}",
+                "- Breakdown-field weight: "
+                f"{ranking_plan.weights.breakdown_field_mv_cm:.1%}",
+            ]
+        )
+        if ranking_plan.inferred_requirements:
+            lines.append("- Domain requirements inferred by the planner:")
+            lines.extend(
+                f"  - {item}" for item in ranking_plan.inferred_requirements
+            )
 
     lines.extend(
         [

@@ -2,7 +2,7 @@
 
 from typing import Any, TypedDict
 
-from matagent.schemas import ScreeningRequirements
+from matagent.schemas import RankingPlan, ScreeningRequirements
 
 
 class AgentState(TypedDict, total=False):
@@ -10,6 +10,7 @@ class AgentState(TypedDict, total=False):
 
     user_query: str
     requirements: ScreeningRequirements
+    ranking_plan: RankingPlan
     candidates: list[dict[str, Any]]
     ranked_candidates: list[dict[str, Any]]
     tool_history: list[dict[str, Any]]

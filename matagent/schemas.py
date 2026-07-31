@@ -1,6 +1,6 @@
 """Validated data contracts used by the agent workflow."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ScreeningRequirements(BaseModel):
@@ -38,3 +38,34 @@ class ScreeningRequirements(BaseModel):
         default_factory=list,
         description="Explicit assumptions introduced during requirement parsing.",
     )
+
+
+class RankingWeights(BaseModel):
+    """Normalized weights for the current demonstration ranking properties."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    band_gap_ev: float = Field(ge=0, le=1)
+    thermal_conductivity_w_mk: float = Field(ge=0, le=1)
+    breakdown_field_mv_cm: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def weights_sum_to_one(self) -> "RankingWeights":
+        total = (
+            self.band_gap_ev
+            + self.thermal_conductivity_w_mk
+            + self.breakdown_field_mv_cm
+        )
+        if abs(total - 1.0) > 1e-9:
+            raise ValueError("Ranking weights must sum to 1.0.")
+        return self
+
+
+class RankingPlan(BaseModel):
+    """Auditable plan connecting parsed requirements to ranking behavior."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    weights: RankingWeights
+    rationale: dict[str, str]
+    inferred_requirements: list[str] = Field(default_factory=list)

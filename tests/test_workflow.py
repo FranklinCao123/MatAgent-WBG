@@ -10,8 +10,8 @@ from pydantic import ValidationError
 
 from matagent.graph import build_graph
 from matagent.llm import DeepSeekRequirementParser, RequirementParsingError
-from matagent.nodes import parse_requirements, route_after_search
-from matagent.schemas import ScreeningRequirements
+from matagent.nodes import parse_requirements, plan_screening, route_after_search
+from matagent.schemas import RankingWeights, ScreeningRequirements
 
 
 class FakeDeepSeekClient:
@@ -38,6 +38,19 @@ class FailingRequirementParser:
 
     def parse(self, user_query: str) -> ScreeningRequirements:
         raise RequirementParsingError("Test parser failure.")
+
+
+class StaticPowerRequirementParser:
+    name = "static_power_test_parser"
+
+    def parse(self, user_query: str) -> ScreeningRequirements:
+        return ScreeningRequirements(
+            application="high-temperature power devices",
+            minimum_band_gap_ev=3.0,
+            prefer_high_thermal_conductivity=True,
+            prefer_high_breakdown_field=False,
+            assumptions=[],
+        )
 
 
 class DeepSeekRequirementParserTests(unittest.TestCase):
@@ -89,6 +102,61 @@ class ScreeningRequirementsTests(unittest.TestCase):
                 unsupported_property="unexpected",  # type: ignore[call-arg]
             )
 
+    def test_ranking_weights_must_sum_to_one(self) -> None:
+        with self.assertRaises(ValidationError):
+            RankingWeights(
+                band_gap_ev=0.5,
+                thermal_conductivity_w_mk=0.5,
+                breakdown_field_mv_cm=0.5,
+            )
+
+
+class ScientificPlanningTests(unittest.TestCase):
+    def test_power_application_infers_breakdown_priority(self) -> None:
+        requirements = ScreeningRequirements(
+            application="high-temperature power devices",
+            minimum_band_gap_ev=3.0,
+            prefer_high_thermal_conductivity=True,
+            prefer_high_breakdown_field=False,
+            assumptions=[],
+        )
+
+        update = plan_screening(
+            {
+                "requirements": requirements,
+                "tool_history": [],
+            }
+        )
+        plan = update["ranking_plan"]
+
+        self.assertGreater(
+            plan.weights.breakdown_field_mv_cm,
+            plan.weights.band_gap_ev,
+        )
+        self.assertTrue(
+            any(
+                "power-device" in item
+                for item in plan.inferred_requirements
+            )
+        )
+
+    def test_inferred_requirement_reaches_final_report(self) -> None:
+        result = build_graph(
+            requirement_parser=StaticPowerRequirementParser()
+        ).invoke(
+            {
+                "user_query": "Find high-temperature power materials",
+                "tool_history": [],
+                "errors": [],
+                "status": "started",
+            }
+        )
+
+        self.assertIn(
+            "High breakdown field was inferred from the power-device application.",
+            result["final_report"],
+        )
+
 
 class RequirementParsingTests(unittest.TestCase):
     def test_chinese_power_query_is_structured(self) -> None:
@@ -129,7 +197,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("illustrative mock data", result["final_report"])
         self.assertEqual(
             [entry["step"] for entry in result["tool_history"]],
-            ["parse_requirements", "search_materials", "rank_candidates"],
+            [
+                "parse_requirements",
+                "plan_screening",
+                "search_materials",
+                "rank_candidates",
+            ],
         )
         self.assertEqual(result["status"], "completed")
 
@@ -156,7 +229,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("No mock candidates found", result["final_report"])
         self.assertEqual(
             [entry["step"] for entry in result["tool_history"]],
-            ["parse_requirements", "search_materials"],
+            ["parse_requirements", "plan_screening", "search_materials"],
         )
         self.assertEqual(result["status"], "completed")
 

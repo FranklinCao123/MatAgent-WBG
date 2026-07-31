@@ -8,10 +8,12 @@ wide-bandgap semiconductor materials.
 The current version validates a deterministic LangGraph workflow:
 
 1. Parse a natural-language request.
-2. Search a tiny local mock dataset.
-3. Route conditionally based on tool results.
-4. Rank candidates with a transparent weighted rule when results exist.
-5. Generate a Markdown report, including recoverable tool errors.
+2. Enrich the parsed request with an auditable demonstration domain policy.
+3. Build a request-aware ranking plan.
+4. Search a tiny local mock dataset.
+5. Route conditionally based on tool results.
+6. Rank candidates using the generated plan when results exist.
+7. Generate a Markdown report, including inferred requirements and errors.
 
 No LLM API, GPU, scientific model, vector database, or server is required.
 All material property values are illustrative mock data and are not suitable
@@ -102,12 +104,21 @@ python -m unittest discover -s tests -v
 The graph now contains a conditional edge:
 
 ```text
-search_materials
-├── candidates found ──> rank_candidates ──> generate_report
-└── empty/error ───────────────────────────> generate_report
+parse_requirements
+├── success → plan_screening → search_materials
+│                              ├── candidates → rank_candidates ─┐
+│                              └── empty/error ──────────────────┤
+└── error ──────────────────────────────────────────────────────┤
+                                                               ↓
+                                                        generate_report
 ```
 
 Screening requirements are represented by a strict Pydantic model. Invalid
 values and unexpected fields are rejected before they can reach a scientific
 tool. The same schema can later be used as the contract for structured LLM
 output.
+
+`plan_screening` is currently a transparent demonstration policy rather than
+an LLM call or a validated scientific ranking method. It records any domain
+requirements inferred from the application and produces normalized weights
+that sum to 1.0. The ranking node consumes this plan instead of fixed weights.

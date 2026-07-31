@@ -8,6 +8,7 @@ from matagent.nodes import (
     create_requirement_parser_node,
     create_material_search_node,
     generate_report,
+    plan_screening,
     rank_candidates,
     route_after_parsing,
     route_after_search,
@@ -39,6 +40,7 @@ def build_graph(
         "search_materials",
         create_material_search_node(search_tool),
     )
+    builder.add_node("plan_screening", plan_screening)
     builder.add_node("rank_candidates", rank_candidates)
     builder.add_node("generate_report", generate_report)
 
@@ -47,10 +49,11 @@ def build_graph(
         "parse_requirements",
         route_after_parsing,
         {
-            "search": "search_materials",
+            "plan": "plan_screening",
             "report": "generate_report",
         },
     )
+    builder.add_edge("plan_screening", "search_materials")
     builder.add_conditional_edges(
         "search_materials",
         route_after_search,
