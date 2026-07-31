@@ -6,16 +6,27 @@ from langgraph.graph import END, START, StateGraph
 
 from matagent.nodes import (
     create_requirement_parser_node,
-    create_material_search_node,
+    create_tool_decision_node,
+    create_tool_execution_node,
     generate_report,
     plan_screening,
     rank_candidates,
     route_after_parsing,
-    route_after_search,
+    route_after_tool_decision,
+    route_after_tool_execution,
 )
-from matagent.llm import RequirementParser, RuleBasedRequirementParser
+from matagent.llm import (
+    RequirementParser,
+    RuleBasedRequirementParser,
+    RuleBasedToolSelector,
+    ToolSelector,
+)
 from matagent.state import AgentState
-from matagent.tools import MockMaterialSearchTool
+from matagent.tools import (
+    MaterialSearchArguments,
+    MockMaterialSearchTool,
+    ToolRegistry,
+)
 
 
 def default_mock_data_path() -> Path:
@@ -25,11 +36,24 @@ def default_mock_data_path() -> Path:
 def build_graph(
     data_path: Path | None = None,
     requirement_parser: RequirementParser | None = None,
+    tool_selector: ToolSelector | None = None,
 ):
     """Build the graph with caller-selectable data and parser backends."""
 
     search_tool = MockMaterialSearchTool(data_path or default_mock_data_path())
     parser = requirement_parser or RuleBasedRequirementParser()
+    selector = tool_selector or RuleBasedToolSelector()
+    registry = ToolRegistry()
+    registry.register(
+        name="search_materials",
+        description=(
+            "Search the available semiconductor material dataset using an exact "
+            "band-gap threshold and comparison operator."
+        ),
+        arguments_model=MaterialSearchArguments,
+        handler=search_tool.search,
+    )
+    tool_specs = registry.tool_specs()
 
     builder = StateGraph(AgentState)
     builder.add_node(
@@ -37,9 +61,10 @@ def build_graph(
         create_requirement_parser_node(parser),
     )
     builder.add_node(
-        "search_materials",
-        create_material_search_node(search_tool),
+        "decide_tools",
+        create_tool_decision_node(selector, tool_specs),
     )
+    builder.add_node("execute_tools", create_tool_execution_node(registry))
     builder.add_node("plan_screening", plan_screening)
     builder.add_node("rank_candidates", rank_candidates)
     builder.add_node("generate_report", generate_report)
@@ -53,10 +78,18 @@ def build_graph(
             "report": "generate_report",
         },
     )
-    builder.add_edge("plan_screening", "search_materials")
+    builder.add_edge("plan_screening", "decide_tools")
     builder.add_conditional_edges(
-        "search_materials",
-        route_after_search,
+        "decide_tools",
+        route_after_tool_decision,
+        {
+            "execute": "execute_tools",
+            "report": "generate_report",
+        },
+    )
+    builder.add_conditional_edges(
+        "execute_tools",
+        route_after_tool_execution,
         {
             "rank": "rank_candidates",
             "report": "generate_report",

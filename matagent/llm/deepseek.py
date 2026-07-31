@@ -22,6 +22,7 @@ Example JSON output:
 {{
   "application": "high-temperature power electronics",
   "minimum_band_gap_ev": 3.0,
+  "band_gap_operator": ">",
   "prefer_high_thermal_conductivity": true,
   "prefer_high_breakdown_field": true,
   "assumptions": []

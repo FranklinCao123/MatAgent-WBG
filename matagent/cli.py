@@ -7,6 +7,7 @@ from matagent.config import (
     ConfigurationError,
     LLMSettings,
     build_requirement_parser,
+    build_tool_selector,
 )
 from matagent.graph import build_graph
 
@@ -40,10 +41,14 @@ def main() -> None:
     try:
         settings = LLMSettings.from_environment(mode=args.mode)
         requirement_parser = build_requirement_parser(settings)
+        tool_selector = build_tool_selector(settings)
     except (ConfigurationError, RuntimeError) as error:
         parser.error(str(error))
 
-    graph = build_graph(requirement_parser=requirement_parser)
+    graph = build_graph(
+        requirement_parser=requirement_parser,
+        tool_selector=tool_selector,
+    )
     result = graph.invoke(
         {
             "user_query": args.query,

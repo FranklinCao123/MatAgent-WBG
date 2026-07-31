@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
-from matagent.llm import DeepSeekRequirementParser, RequirementParser
+from matagent.llm import (
+    DeepSeekRequirementParser,
+    DeepSeekToolSelector,
+    RequirementParser,
+    RuleBasedToolSelector,
+    ToolSelector,
+)
 from matagent.llm.rule_based import RuleBasedRequirementParser
 
 
@@ -47,6 +53,24 @@ def build_requirement_parser(settings: LLMSettings) -> RequirementParser:
                 "DeepSeek mode requires MATAGENT_LLM_API_KEY."
             )
         return DeepSeekRequirementParser(
+            api_key=settings.api_key,
+            model=settings.model,
+            base_url=settings.base_url,
+        )
+    raise ConfigurationError(f"Unsupported LLM mode: {settings.mode}")
+
+
+def build_tool_selector(settings: LLMSettings) -> ToolSelector:
+    """Build an offline or DeepSeek tool selector from the same settings."""
+
+    if settings.mode == "offline":
+        return RuleBasedToolSelector()
+    if settings.mode == "deepseek":
+        if not settings.api_key:
+            raise ConfigurationError(
+                "DeepSeek mode requires MATAGENT_LLM_API_KEY."
+            )
+        return DeepSeekToolSelector(
             api_key=settings.api_key,
             model=settings.model,
             base_url=settings.base_url,

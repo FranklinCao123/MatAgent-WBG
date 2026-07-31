@@ -9,15 +9,33 @@ from types import SimpleNamespace
 from pydantic import ValidationError
 
 from matagent.graph import build_graph
-from matagent.llm import DeepSeekRequirementParser, RequirementParsingError
-from matagent.nodes import parse_requirements, plan_screening, route_after_search
+from matagent.llm import (
+    DeepSeekRequirementParser,
+    DeepSeekToolSelector,
+    RequirementParsingError,
+    ToolSelectionError,
+)
+from matagent.nodes import (
+    parse_requirements,
+    plan_screening,
+    route_after_tool_decision,
+    route_after_tool_execution,
+)
 from matagent.schemas import RankingWeights, ScreeningRequirements
+from matagent.tools import (
+    MaterialSearchArguments,
+    MockMaterialSearchTool,
+    ToolCallRequest,
+    ToolExecutionError,
+    ToolRegistry,
+)
 
 
 class FakeDeepSeekClient:
-    def __init__(self, content: str) -> None:
+    def __init__(self, content: str | None = None, tool_calls=None) -> None:
         self.last_request = None
         self._content = content
+        self._tool_calls = tool_calls
         self.chat = SimpleNamespace(
             completions=SimpleNamespace(create=self._create),
         )
@@ -27,7 +45,10 @@ class FakeDeepSeekClient:
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
-                    message=SimpleNamespace(content=self._content),
+                    message=SimpleNamespace(
+                        content=self._content,
+                        tool_calls=self._tool_calls,
+                    ),
                 )
             ]
         )
@@ -47,6 +68,7 @@ class StaticPowerRequirementParser:
         return ScreeningRequirements(
             application="high-temperature power devices",
             minimum_band_gap_ev=3.0,
+            band_gap_operator=">",
             prefer_high_thermal_conductivity=True,
             prefer_high_breakdown_field=False,
             assumptions=[],
@@ -60,6 +82,7 @@ class DeepSeekRequirementParserTests(unittest.TestCase):
                 {
                     "application": "high-temperature power electronics",
                     "minimum_band_gap_ev": 3.0,
+                    "band_gap_operator": ">",
                     "prefer_high_thermal_conductivity": True,
                     "prefer_high_breakdown_field": True,
                     "assumptions": [],
@@ -74,6 +97,7 @@ class DeepSeekRequirementParserTests(unittest.TestCase):
         requirements = parser.parse("Find materials with band gap above 3 eV")
 
         self.assertEqual(requirements.minimum_band_gap_ev, 3.0)
+        self.assertEqual(requirements.band_gap_operator, ">")
         self.assertEqual(
             client.last_request["response_format"],
             {"type": "json_object"},
@@ -90,15 +114,148 @@ class DeepSeekRequirementParserTests(unittest.TestCase):
             parser.parse("Find a material")
 
 
+class DeepSeekToolSelectorTests(unittest.TestCase):
+    def test_deepseek_tool_call_is_converted_without_execution(self) -> None:
+        requirements = ScreeningRequirements(
+            application="power devices",
+            minimum_band_gap_ev=3.0,
+            band_gap_operator=">",
+            prefer_high_thermal_conductivity=True,
+            prefer_high_breakdown_field=True,
+            assumptions=[],
+        )
+        ranking_plan = plan_screening(
+            {"requirements": requirements, "tool_history": []}
+        )["ranking_plan"]
+        raw_call = SimpleNamespace(
+            id="call-search-1",
+            function=SimpleNamespace(
+                name="search_materials",
+                arguments=json.dumps(
+                    {
+                        "band_gap_threshold_ev": 3.0,
+                        "band_gap_operator": ">",
+                    }
+                ),
+            ),
+        )
+        client = FakeDeepSeekClient(tool_calls=[raw_call])
+        selector = DeepSeekToolSelector(
+            api_key="test-key-not-real",
+            client=client,
+        )
+
+        calls = selector.select(
+            user_query="Find materials above 3 eV",
+            requirements=requirements,
+            ranking_plan=ranking_plan,
+            tool_specs=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_materials",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        )
+
+        self.assertEqual(calls[0].name, "search_materials")
+        self.assertEqual(calls[0].arguments["band_gap_operator"], ">")
+        self.assertEqual(client.last_request["tool_choice"], "auto")
+        self.assertIn("tools", client.last_request)
+
+    def test_invalid_tool_argument_json_is_rejected(self) -> None:
+        raw_call = SimpleNamespace(
+            id="call-invalid-1",
+            function=SimpleNamespace(
+                name="search_materials",
+                arguments="not-json",
+            ),
+        )
+        selector = DeepSeekToolSelector(
+            api_key="test-key-not-real",
+            client=FakeDeepSeekClient(tool_calls=[raw_call]),
+        )
+        requirements = ScreeningRequirements(
+            application="power devices",
+            minimum_band_gap_ev=3.0,
+            band_gap_operator=">",
+        )
+        ranking_plan = plan_screening(
+            {"requirements": requirements, "tool_history": []}
+        )["ranking_plan"]
+
+        with self.assertRaises(ToolSelectionError):
+            selector.select(
+                user_query="Find materials",
+                requirements=requirements,
+                ranking_plan=ranking_plan,
+                tool_specs=[],
+            )
+
+
+class MaterialSearchToolTests(unittest.TestCase):
+    def test_strict_and_inclusive_thresholds_are_distinct(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            data_path = Path(directory) / "boundary-materials.json"
+            data_path.write_text(
+                json.dumps(
+                    [
+                        {"name": "Equal", "band_gap_ev": 3.0},
+                        {"name": "Above", "band_gap_ev": 3.1},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            tool = MockMaterialSearchTool(data_path)
+            strict = tool.search(
+                MaterialSearchArguments(
+                    band_gap_threshold_ev=3.0,
+                    band_gap_operator=">",
+                )
+            )
+            inclusive = tool.search(
+                MaterialSearchArguments(
+                    band_gap_threshold_ev=3.0,
+                    band_gap_operator=">=",
+                )
+            )
+
+        self.assertEqual([item["name"] for item in strict], ["Above"])
+        self.assertEqual(
+            [item["name"] for item in inclusive],
+            ["Equal", "Above"],
+        )
+
+
+class ToolRegistryTests(unittest.TestCase):
+    def test_unregistered_tool_is_rejected(self) -> None:
+        registry = ToolRegistry()
+
+        with self.assertRaises(ToolExecutionError):
+            registry.execute(
+                ToolCallRequest(
+                    id="unknown-1",
+                    name="delete_files",
+                    arguments={},
+                )
+            )
+
+
 class ScreeningRequirementsTests(unittest.TestCase):
     def test_invalid_band_gap_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
-            ScreeningRequirements(minimum_band_gap_ev=-1)
+            ScreeningRequirements(
+                minimum_band_gap_ev=-1,
+                band_gap_operator=">=",
+            )
 
     def test_unexpected_fields_are_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             ScreeningRequirements(
                 minimum_band_gap_ev=2.0,
+                band_gap_operator=">=",
                 unsupported_property="unexpected",  # type: ignore[call-arg]
             )
 
@@ -116,6 +273,7 @@ class ScientificPlanningTests(unittest.TestCase):
         requirements = ScreeningRequirements(
             application="high-temperature power devices",
             minimum_band_gap_ev=3.0,
+            band_gap_operator=">",
             prefer_high_thermal_conductivity=True,
             prefer_high_breakdown_field=False,
             assumptions=[],
@@ -200,7 +358,8 @@ class WorkflowTests(unittest.TestCase):
             [
                 "parse_requirements",
                 "plan_screening",
-                "search_materials",
+                "decide_tools",
+                "execute_tool",
                 "rank_candidates",
             ],
         )
@@ -229,7 +388,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("No mock candidates found", result["final_report"])
         self.assertEqual(
             [entry["step"] for entry in result["tool_history"]],
-            ["parse_requirements", "plan_screening", "search_materials"],
+            [
+                "parse_requirements",
+                "plan_screening",
+                "decide_tools",
+                "execute_tool",
+            ],
         )
         self.assertEqual(result["status"], "completed")
 
@@ -258,11 +422,22 @@ class WorkflowTests(unittest.TestCase):
 
 
 class RoutingTests(unittest.TestCase):
+    def test_selected_call_routes_to_execution(self) -> None:
+        self.assertEqual(
+            route_after_tool_decision(
+                {"pending_tool_calls": [{"name": "search_materials"}]}
+            ),
+            "execute",
+        )
+
     def test_candidates_route_to_ranking(self) -> None:
-        self.assertEqual(route_after_search({"candidates": [{"name": "GaN"}]}), "rank")
+        self.assertEqual(
+            route_after_tool_execution({"candidates": [{"name": "GaN"}]}),
+            "rank",
+        )
 
     def test_empty_candidates_route_to_report(self) -> None:
-        self.assertEqual(route_after_search({"candidates": []}), "report")
+        self.assertEqual(route_after_tool_execution({"candidates": []}), "report")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,5 @@
 """LangGraph node functions for the local prototype."""
 
-import json
 from collections.abc import Callable
 from typing import Any
 
@@ -8,10 +7,12 @@ from matagent.llm import (
     RequirementParser,
     RequirementParsingError,
     RuleBasedRequirementParser,
+    ToolSelectionError,
+    ToolSelector,
 )
 from matagent.schemas import RankingPlan, RankingWeights
 from matagent.state import AgentState
-from matagent.tools import MockMaterialSearchTool
+from matagent.tools import ToolExecutionError, ToolRegistry
 
 
 def create_requirement_parser_node(
@@ -121,7 +122,8 @@ def plan_screening(state: AgentState) -> dict[str, Any]:
         rationale={
             "band_gap_ev": (
                 "Band gap is retained as a ranking factor after applying the hard "
-                f"minimum threshold of {requirements.minimum_band_gap_ev} eV."
+                f"constraint {requirements.band_gap_operator} "
+                f"{requirements.minimum_band_gap_ev} eV."
             ),
             "thermal_conductivity_w_mk": (
                 "Thermal conductivity receives extra demonstration weight."
@@ -153,54 +155,121 @@ def plan_screening(state: AgentState) -> dict[str, Any]:
     }
 
 
-def create_material_search_node(
-    tool: MockMaterialSearchTool,
+def create_tool_decision_node(
+    selector: ToolSelector,
+    tool_specs: list[dict[str, Any]],
 ) -> Callable[[AgentState], dict[str, Any]]:
-    """Inject a search tool into a LangGraph-compatible node function."""
+    """Inject a selector that proposes allow-listed tool calls without running them."""
 
-    def search_materials(state: AgentState) -> dict[str, Any]:
-        minimum_gap = state["requirements"].minimum_band_gap_ev
+    def decide_tools(state: AgentState) -> dict[str, Any]:
         history = list(state.get("tool_history", []))
-
         try:
-            candidates = tool.search(minimum_band_gap_ev=minimum_gap)
-        except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
-            message = f"{tool.name} failed: {error}"
+            calls = selector.select(
+                user_query=state["user_query"],
+                requirements=state["requirements"],
+                ranking_plan=state["ranking_plan"],
+                tool_specs=tool_specs,
+            )
+        except ToolSelectionError as error:
             history.append(
                 {
-                    "step": "search_materials",
-                    "tool": tool.name,
+                    "step": "decide_tools",
+                    "selector": selector.name,
                     "status": "error",
-                    "error": message,
+                    "error": str(error),
                 }
             )
             return {
-                "candidates": [],
-                "errors": [*state.get("errors", []), message],
-                "status": "tool_error",
+                "pending_tool_calls": [],
+                "errors": [*state.get("errors", []), str(error)],
+                "status": "tool_selection_error",
                 "tool_history": history,
             }
 
         history.append(
             {
-                "step": "search_materials",
-                "tool": tool.name,
-                "status": "success",
-                "criteria": {"minimum_band_gap_ev": minimum_gap},
-                "candidate_count": len(candidates),
+                "step": "decide_tools",
+                "selector": selector.name,
+                "status": "success" if calls else "no_tool_selected",
+                "calls": [call.model_dump(mode="json") for call in calls],
             }
         )
         return {
-            "candidates": candidates,
-            "status": "candidates_found" if candidates else "no_candidates",
+            "pending_tool_calls": calls,
+            "tool_iteration": state.get("tool_iteration", 0) + 1,
+            "status": "tool_calls_planned" if calls else "no_tool_selected",
             "tool_history": history,
         }
 
-    return search_materials
+    return decide_tools
 
 
-def route_after_search(state: AgentState) -> str:
-    """Choose whether the workflow should rank candidates or report a problem."""
+def route_after_tool_decision(state: AgentState) -> str:
+    """Execute selected tools or stop when selection failed or returned nothing."""
+
+    if state.get("errors") or not state.get("pending_tool_calls"):
+        return "report"
+    return "execute"
+
+
+def create_tool_execution_node(
+    registry: ToolRegistry,
+) -> Callable[[AgentState], dict[str, Any]]:
+    """Validate and execute only tool calls present in the registry."""
+
+    def execute_tools(state: AgentState) -> dict[str, Any]:
+        history = list(state.get("tool_history", []))
+        results = list(state.get("tool_results", []))
+        errors = list(state.get("errors", []))
+        candidates: list[dict[str, Any]] = []
+
+        for call in state.get("pending_tool_calls", []):
+            try:
+                result = registry.execute(call)
+            except ToolExecutionError as error:
+                errors.append(str(error))
+                history.append(
+                    {
+                        "step": "execute_tool",
+                        "tool": call.name,
+                        "call_id": call.id,
+                        "status": "error",
+                        "error": str(error),
+                    }
+                )
+                continue
+
+            results.append(result)
+            if result.name == "search_materials":
+                candidates.extend(result.output)
+            history.append(
+                {
+                    "step": "execute_tool",
+                    "tool": result.name,
+                    "call_id": result.call_id,
+                    "status": "success",
+                    "candidate_count": len(result.output),
+                }
+            )
+
+        return {
+            "pending_tool_calls": [],
+            "tool_results": results,
+            "candidates": candidates,
+            "errors": errors,
+            "status": (
+                "tool_error"
+                if errors
+                else "candidates_found" if candidates else "no_candidates"
+            ),
+            "tool_history": history,
+        }
+
+    return execute_tools
+
+
+def route_after_tool_execution(state: AgentState) -> str:
+    """Rank successful search results or report an empty/error outcome."""
 
     if state.get("errors") or not state.get("candidates"):
         return "report"
@@ -277,7 +346,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
         lines.extend(
             [
                 f"- Application: {requirements.application}",
-                f"- Minimum band-gap requirement: "
+                f"- Band-gap requirement: {requirements.band_gap_operator} "
                 f"{requirements.minimum_band_gap_ev} eV",
             ]
         )

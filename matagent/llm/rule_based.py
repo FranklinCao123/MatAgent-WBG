@@ -24,6 +24,7 @@ class RuleBasedRequirementParser:
                 "power electronics" if is_power_electronics else "unspecified"
             ),
             minimum_band_gap_ev=2.0,
+            band_gap_operator=">=",
             prefer_high_thermal_conductivity=is_high_temperature,
             prefer_high_breakdown_field=is_power_electronics,
             assumptions=[

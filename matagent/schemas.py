@@ -1,5 +1,7 @@
 """Validated data contracts used by the agent workflow."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -22,9 +24,11 @@ class ScreeningRequirements(BaseModel):
         description="Target device or scientific application.",
     )
     minimum_band_gap_ev: float = Field(
-        default=2.0,
         gt=0,
         description="Minimum accepted band gap in electronvolts.",
+    )
+    band_gap_operator: Literal[">", ">="] = Field(
+        description="Whether the band-gap threshold is strict or inclusive.",
     )
     prefer_high_thermal_conductivity: bool = Field(
         default=False,
