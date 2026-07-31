@@ -21,6 +21,7 @@ for scientific or engineering decisions.
 
 ```text
 matagent/
+├── schemas.py               # Strict Pydantic data contracts
 ├── state.py                 # Shared LangGraph state
 ├── nodes.py                 # Workflow node logic
 ├── graph.py                 # Graph construction and conditional routing
@@ -75,3 +76,8 @@ search_materials
 ├── candidates found ──> rank_candidates ──> generate_report
 └── empty/error ───────────────────────────> generate_report
 ```
+
+Screening requirements are represented by a strict Pydantic model. Invalid
+values and unexpected fields are rejected before they can reach a scientific
+tool. The same schema can later be used as the contract for structured LLM
+output.

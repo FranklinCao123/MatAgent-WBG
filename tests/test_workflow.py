@@ -5,8 +5,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from matagent.graph import build_graph
 from matagent.nodes import parse_requirements, route_after_search
+from matagent.schemas import ScreeningRequirements
+
+
+class ScreeningRequirementsTests(unittest.TestCase):
+    def test_invalid_band_gap_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            ScreeningRequirements(minimum_band_gap_ev=-1)
+
+    def test_unexpected_fields_are_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            ScreeningRequirements(
+                minimum_band_gap_ev=2.0,
+                unsupported_property="unexpected",  # type: ignore[call-arg]
+            )
 
 
 class RequirementParsingTests(unittest.TestCase):
@@ -19,9 +35,10 @@ class RequirementParsingTests(unittest.TestCase):
         )
 
         requirements = update["requirements"]
-        self.assertEqual(requirements["application"], "power electronics")
-        self.assertTrue(requirements["prefer_high_thermal_conductivity"])
-        self.assertTrue(requirements["prefer_high_breakdown_field"])
+        self.assertIsInstance(requirements, ScreeningRequirements)
+        self.assertEqual(requirements.application, "power electronics")
+        self.assertTrue(requirements.prefer_high_thermal_conductivity)
+        self.assertTrue(requirements.prefer_high_breakdown_field)
 
 
 class WorkflowTests(unittest.TestCase):

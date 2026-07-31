@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from matagent.schemas import ScreeningRequirements
 from matagent.state import AgentState
 from matagent.tools import MockMaterialSearchTool
 
@@ -19,23 +20,23 @@ def parse_requirements(state: AgentState) -> dict[str, Any]:
         term in query for term in ("high temperature", "high-temperature", "高温")
     )
 
-    requirements = {
-        "application": "power electronics" if is_power_electronics else "unspecified",
-        "minimum_band_gap_ev": 2.0,
-        "prefer_high_thermal_conductivity": is_high_temperature,
-        "prefer_high_breakdown_field": is_power_electronics,
-        "assumptions": [
+    requirements = ScreeningRequirements(
+        application="power electronics" if is_power_electronics else "unspecified",
+        minimum_band_gap_ev=2.0,
+        prefer_high_thermal_conductivity=is_high_temperature,
+        prefer_high_breakdown_field=is_power_electronics,
+        assumptions=[
             "Wide-bandgap screening uses a demonstration threshold of 2.0 eV.",
             "Cost, manufacturability, and supply-chain constraints are not yet evaluated.",
         ],
-    }
+    )
 
     history = list(state.get("tool_history", []))
     history.append(
         {
             "step": "parse_requirements",
             "type": "deterministic_parser",
-            "result": requirements,
+            "result": requirements.model_dump(mode="json"),
         }
     )
     return {"requirements": requirements, "tool_history": history}
@@ -47,7 +48,7 @@ def create_material_search_node(
     """Inject a search tool into a LangGraph-compatible node function."""
 
     def search_materials(state: AgentState) -> dict[str, Any]:
-        minimum_gap = state["requirements"]["minimum_band_gap_ev"]
+        minimum_gap = state["requirements"].minimum_band_gap_ev
         history = list(state.get("tool_history", []))
 
         try:
@@ -160,9 +161,9 @@ def generate_report(state: AgentState) -> dict[str, str]:
         "## Interpreted request",
         "",
         f"- Original query: {state['user_query']}",
-        f"- Application: {requirements['application']}",
+        f"- Application: {requirements.application}",
         f"- Minimum demonstration band gap: "
-        f"{requirements['minimum_band_gap_ev']} eV",
+        f"{requirements.minimum_band_gap_ev} eV",
         "",
         "## Workflow status",
         "",
