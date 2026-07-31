@@ -1,5 +1,6 @@
 """LangGraph node functions for the local prototype."""
 
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -47,20 +48,51 @@ def create_material_search_node(
 
     def search_materials(state: AgentState) -> dict[str, Any]:
         minimum_gap = state["requirements"]["minimum_band_gap_ev"]
-        candidates = tool.search(minimum_band_gap_ev=minimum_gap)
-
         history = list(state.get("tool_history", []))
+
+        try:
+            candidates = tool.search(minimum_band_gap_ev=minimum_gap)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+            message = f"{tool.name} failed: {error}"
+            history.append(
+                {
+                    "step": "search_materials",
+                    "tool": tool.name,
+                    "status": "error",
+                    "error": message,
+                }
+            )
+            return {
+                "candidates": [],
+                "errors": [*state.get("errors", []), message],
+                "status": "tool_error",
+                "tool_history": history,
+            }
+
         history.append(
             {
                 "step": "search_materials",
                 "tool": tool.name,
+                "status": "success",
                 "criteria": {"minimum_band_gap_ev": minimum_gap},
                 "candidate_count": len(candidates),
             }
         )
-        return {"candidates": candidates, "tool_history": history}
+        return {
+            "candidates": candidates,
+            "status": "candidates_found" if candidates else "no_candidates",
+            "tool_history": history,
+        }
 
     return search_materials
+
+
+def route_after_search(state: AgentState) -> str:
+    """Choose whether the workflow should rank candidates or report a problem."""
+
+    if state.get("errors") or not state.get("candidates"):
+        return "report"
+    return "rank"
 
 
 def rank_candidates(state: AgentState) -> dict[str, Any]:
@@ -105,14 +137,19 @@ def rank_candidates(state: AgentState) -> dict[str, Any]:
             "weights": weights,
         }
     )
-    return {"ranked_candidates": ranked, "tool_history": history}
+    return {
+        "ranked_candidates": ranked,
+        "status": "ranked",
+        "tool_history": history,
+    }
 
 
 def generate_report(state: AgentState) -> dict[str, str]:
     """Generate a compact Markdown report from the current graph state."""
 
     requirements = state["requirements"]
-    ranked = state["ranked_candidates"]
+    ranked = state.get("ranked_candidates", [])
+    errors = state.get("errors", [])
 
     lines = [
         "# MatAgent-WBG Local Prototype Report",
@@ -127,12 +164,29 @@ def generate_report(state: AgentState) -> dict[str, str]:
         f"- Minimum demonstration band gap: "
         f"{requirements['minimum_band_gap_ev']} eV",
         "",
+        "## Workflow status",
+        "",
+        f"- Status before report generation: {state.get('status', 'unknown')}",
+    ]
+
+    if errors:
+        lines.extend(
+            [
+                "- The workflow encountered an error:",
+                *[f"  - {error}" for error in errors],
+            ]
+        )
+
+    lines.extend(
+        [
+        "",
         "## Demonstration ranking",
         "",
         "| Rank | Material | Band gap (eV) | Thermal conductivity (W/mK) "
         "| Breakdown field (MV/cm) | Demo score |",
         "|---:|---|---:|---:|---:|---:|",
-    ]
+        ]
+    )
 
     if ranked:
         for index, material in enumerate(ranked, start=1):
@@ -156,4 +210,4 @@ def generate_report(state: AgentState) -> dict[str, str]:
             "included in this prototype.",
         ]
     )
-    return {"final_report": "\n".join(lines)}
+    return {"final_report": "\n".join(lines), "status": "completed"}

@@ -11,4 +11,6 @@ class AgentState(TypedDict, total=False):
     candidates: list[dict[str, Any]]
     ranked_candidates: list[dict[str, Any]]
     tool_history: list[dict[str, Any]]
+    status: str
+    errors: list[str]
     final_report: str

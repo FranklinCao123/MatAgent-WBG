@@ -9,8 +9,9 @@ The current version validates a deterministic LangGraph workflow:
 
 1. Parse a natural-language request.
 2. Search a tiny local mock dataset.
-3. Rank candidates with a transparent weighted rule.
-4. Generate a Markdown report.
+3. Route conditionally based on tool results.
+4. Rank candidates with a transparent weighted rule when results exist.
+5. Generate a Markdown report, including recoverable tool errors.
 
 No LLM API, GPU, scientific model, vector database, or server is required.
 All material property values are illustrative mock data and are not suitable
@@ -22,7 +23,7 @@ for scientific or engineering decisions.
 matagent/
 ├── state.py                 # Shared LangGraph state
 ├── nodes.py                 # Workflow node logic
-├── graph.py                 # Graph construction
+├── graph.py                 # Graph construction and conditional routing
 ├── cli.py                   # Command-line interface
 └── tools/
     └── material_search.py   # Replaceable material-search tool
@@ -65,4 +66,12 @@ The tests use Python's standard library, so no additional package is needed:
 
 ```powershell
 python -m unittest discover -s tests -v
+```
+
+The graph now contains a conditional edge:
+
+```text
+search_materials
+├── candidates found ──> rank_candidates ──> generate_report
+└── empty/error ───────────────────────────> generate_report
 ```

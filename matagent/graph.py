@@ -9,6 +9,7 @@ from matagent.nodes import (
     generate_report,
     parse_requirements,
     rank_candidates,
+    route_after_search,
 )
 from matagent.state import AgentState
 from matagent.tools import MockMaterialSearchTool
@@ -34,7 +35,14 @@ def build_graph(data_path: Path | None = None):
 
     builder.add_edge(START, "parse_requirements")
     builder.add_edge("parse_requirements", "search_materials")
-    builder.add_edge("search_materials", "rank_candidates")
+    builder.add_conditional_edges(
+        "search_materials",
+        route_after_search,
+        {
+            "rank": "rank_candidates",
+            "report": "generate_report",
+        },
+    )
     builder.add_edge("rank_candidates", "generate_report")
     builder.add_edge("generate_report", END)
     return builder.compile()

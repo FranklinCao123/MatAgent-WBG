@@ -27,7 +27,14 @@ def main() -> None:
     args = parser.parse_args()
 
     graph = build_graph()
-    result = graph.invoke({"user_query": args.query, "tool_history": []})
+    result = graph.invoke(
+        {
+            "user_query": args.query,
+            "tool_history": [],
+            "errors": [],
+            "status": "started",
+        }
+    )
     print(result["final_report"])
 
     if args.show_trace:
