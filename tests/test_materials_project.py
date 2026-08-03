@@ -40,26 +40,46 @@ def sample_payload() -> dict:
             {
                 "material_id": "mp-equal",
                 "formula_pretty": "Equal3",
+                "elements": ["Si"],
                 "band_gap": 3.0,
                 "is_stable": True,
+                "is_metal": False,
+                "theoretical": False,
                 "energy_above_hull": 0.0,
                 "formation_energy_per_atom": -1.0,
             },
             {
                 "material_id": "mp-stable",
                 "formula_pretty": "StableX",
+                "elements": ["Al", "N"],
                 "band_gap": 3.5,
                 "is_stable": True,
+                "is_metal": False,
+                "theoretical": False,
                 "energy_above_hull": 0.0,
                 "formation_energy_per_atom": -2.0,
             },
             {
                 "material_id": "mp-meta",
                 "formula_pretty": "MetaY",
+                "elements": ["Ga", "O"],
                 "band_gap": 4.2,
                 "is_stable": False,
+                "is_metal": False,
+                "theoretical": True,
                 "energy_above_hull": 0.05,
                 "formation_energy_per_atom": -1.5,
+            },
+            {
+                "material_id": "mp-radioactive",
+                "formula_pretty": "AcF3",
+                "elements": ["Ac", "F"],
+                "band_gap": 6.0,
+                "is_stable": True,
+                "is_metal": False,
+                "theoretical": True,
+                "energy_above_hull": 0.0,
+                "formation_energy_per_atom": -4.0,
             },
         ]
     }
@@ -79,13 +99,18 @@ class MaterialsProjectSearchTests(unittest.TestCase):
             MaterialSearchArguments(
                 band_gap_threshold_ev=3.0,
                 band_gap_operator=">",
+                exclude_elements=["Ac"],
+                require_nonmetal=True,
+                maximum_energy_above_hull_ev_atom=0.1,
             )
         )
 
         self.assertEqual(
-            [candidate["material_id"] for candidate in candidates],
+            [candidate["material_id"] for candidate in candidates["candidates"]],
             ["mp-stable", "mp-meta"],
         )
+        self.assertEqual(candidates["retrieved_count"], 4)
+        self.assertEqual(candidates["excluded"][1]["material_id"], "mp-radioactive")
         parsed = urlparse(opener.request.full_url)
         query = parse_qs(parsed.query)
         self.assertEqual(parsed.path, "/materials/summary/")
@@ -96,12 +121,19 @@ class MaterialsProjectSearchTests(unittest.TestCase):
             [
                 "material_id",
                 "formula_pretty",
+                "elements",
                 "band_gap",
                 "is_stable",
+                "is_metal",
+                "theoretical",
                 "energy_above_hull",
                 "formation_energy_per_atom",
             ],
         )
+        self.assertEqual(query["exclude_elements"], ["Ac"])
+        self.assertEqual(query["is_metal"], ["false"])
+        self.assertEqual(query["energy_above_hull_max"], ["0.1"])
+        self.assertEqual(query["_sort_fields"], ["energy_above_hull"])
         self.assertNotIn("test-secret", opener.request.full_url)
         headers = dict(opener.request.header_items())
         self.assertIn("test-secret", headers.values())
@@ -121,7 +153,7 @@ class MaterialsProjectSearchTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(candidates[0]["material_id"], "mp-equal")
+        self.assertEqual(candidates["candidates"][0]["material_id"], "mp-equal")
 
     def test_graph_uses_stability_ranking_without_mock_properties(self) -> None:
         tool = MaterialsProjectSearchTool(
@@ -143,7 +175,17 @@ class MaterialsProjectSearchTests(unittest.TestCase):
             "materials_project_stability",
         )
         self.assertEqual(result["ranked_candidates"][0]["material_id"], "mp-stable")
+        self.assertNotIn(
+            "mp-radioactive",
+            [candidate["material_id"] for candidate in result["candidates"]],
+        )
+        decided_call = next(
+            item for item in result["tool_history"] if item["step"] == "decide_tools"
+        )["calls"][0]
+        self.assertIn("Ac", decided_call["arguments"]["exclude_elements"])
+        self.assertTrue(decided_call["arguments"]["require_nonmetal"])
         self.assertIn("Materials Project screening ranking", result["final_report"])
+        self.assertIn("Candidate filtering", result["final_report"])
         self.assertNotIn("Demo score", result["final_report"])
 
     def test_malformed_response_is_rejected(self) -> None:
@@ -159,6 +201,14 @@ class MaterialsProjectSearchTests(unittest.TestCase):
                     band_gap_operator=">",
                 )
             )
+
+    def test_server_exclusion_subset_respects_api_character_limit(self) -> None:
+        elements = [f"E{index}" for index in range(30)]
+
+        selected = MaterialsProjectSearchTool._server_excluded_elements(elements)
+
+        self.assertLessEqual(len(",".join(selected)), 60)
+        self.assertEqual(selected, elements[: len(selected)])
 
 
 if __name__ == "__main__":

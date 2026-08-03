@@ -3,6 +3,10 @@
 from collections.abc import Callable
 from typing import Any
 
+from matagent.domain_policy import (
+    DEFAULT_MAX_ENERGY_ABOVE_HULL_EV_ATOM,
+    DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS,
+)
 from matagent.llm import (
     RequirementParser,
     RequirementParsingError,
@@ -10,7 +14,7 @@ from matagent.llm import (
     ToolSelectionError,
     ToolSelector,
 )
-from matagent.schemas import RankingPlan, RankingWeights
+from matagent.schemas import CandidateFilterPolicy, RankingPlan, RankingWeights
 from matagent.state import AgentState
 from matagent.tools import ToolExecutionError, ToolRegistry
 
@@ -23,6 +27,7 @@ def initialize_run(state: AgentState) -> dict[str, Any]:
         "ranking_plan": None,
         "pending_tool_calls": [],
         "tool_results": [],
+        "search_diagnostics": [],
         "tool_iteration": 0,
         "candidates": [],
         "ranked_candidates": [],
@@ -120,6 +125,26 @@ def plan_screening(state: AgentState) -> dict[str, Any]:
         plan = RankingPlan(
             strategy="materials_project_stability",
             weights=None,
+            candidate_filters=CandidateFilterPolicy(
+                exclude_elements=list(DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS),
+                require_nonmetal=True,
+                maximum_energy_above_hull_ev_atom=(
+                    DEFAULT_MAX_ENERGY_ABOVE_HULL_EV_ATOM
+                ),
+                rationale={
+                    "exclude_elements": (
+                        "Elements without conventionally stable isotopes are "
+                        "excluded for the default non-nuclear device workflow."
+                    ),
+                    "require_nonmetal": (
+                        "Metallic entries are outside this semiconductor screening task."
+                    ),
+                    "maximum_energy_above_hull_ev_atom": (
+                        "A 0.1 eV/atom demonstration ceiling retains modestly "
+                        "metastable candidates while rejecting high-energy entries."
+                    ),
+                },
+            ),
             rationale={
                 "band_gap_ev": (
                     "Band gap is enforced as a hard constraint and used as a "
@@ -231,6 +256,28 @@ def create_tool_decision_node(
                 ranking_plan=state["ranking_plan"],
                 tool_specs=tool_specs,
             )
+            filter_policy = state["ranking_plan"].candidate_filters
+            if filter_policy is not None:
+                enforced_arguments = {
+                    "exclude_elements": filter_policy.exclude_elements,
+                    "require_nonmetal": filter_policy.require_nonmetal,
+                    "maximum_energy_above_hull_ev_atom": (
+                        filter_policy.maximum_energy_above_hull_ev_atom
+                    ),
+                }
+                calls = [
+                    call.model_copy(
+                        update={
+                            "arguments": {
+                                **call.arguments,
+                                **enforced_arguments,
+                            }
+                        }
+                    )
+                    if call.name == "search_materials"
+                    else call
+                    for call in calls
+                ]
         except ToolSelectionError as error:
             history.append(
                 {
@@ -282,6 +329,7 @@ def create_tool_execution_node(
         history = list(state.get("tool_history", []))
         results = list(state.get("tool_results", []))
         errors = list(state.get("errors", []))
+        search_diagnostics = list(state.get("search_diagnostics", []))
         candidates: list[dict[str, Any]] = []
 
         for call in state.get("pending_tool_calls", []):
@@ -302,14 +350,27 @@ def create_tool_execution_node(
 
             results.append(result)
             if result.name == "search_materials":
-                candidates.extend(result.output)
+                search_output = result.output
+                candidates.extend(search_output["candidates"])
+                search_diagnostics.append(
+                    {
+                        "source": search_output["source"],
+                        "retrieved_count": search_output["retrieved_count"],
+                        "accepted_count": len(search_output["candidates"]),
+                        "excluded_count": len(search_output["excluded"]),
+                        "excluded": search_output["excluded"],
+                        "applied_filters": search_output["applied_filters"],
+                    }
+                )
             history.append(
                 {
                     "step": "execute_tool",
                     "tool": result.name,
                     "call_id": result.call_id,
                     "status": "success",
-                    "candidate_count": len(result.output),
+                    "candidate_count": len(search_output["candidates"]),
+                    "retrieved_count": search_output["retrieved_count"],
+                    "excluded_count": len(search_output["excluded"]),
                 }
             )
 
@@ -317,6 +378,7 @@ def create_tool_execution_node(
             "pending_tool_calls": [],
             "tool_results": results,
             "candidates": candidates,
+            "search_diagnostics": search_diagnostics,
             "errors": errors,
             "status": (
                 "tool_error"
@@ -419,6 +481,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
     errors = state.get("errors", [])
 
     uses_materials_project = state.get("material_backend") == "materials-project"
+    report_limit = state.get("report_limit", 10)
     warning = (
         "> WARNING: Materials Project values are computed screening data; verify "
         "important candidates against methods, uncertainty, and literature."
@@ -484,6 +547,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
             )
 
     if ranking_plan is not None and ranking_plan.weights is None:
+        candidate_filters = ranking_plan.candidate_filters
         lines.extend(
             [
                 "",
@@ -497,6 +561,42 @@ def generate_report(state: AgentState) -> dict[str, str]:
                 ],
             ]
         )
+        if candidate_filters is not None:
+            lines.extend(
+                [
+                    "- Hard filters enforced by the local domain policy:",
+                    "  - Require nonmetallic Materials Project entries.",
+                    "  - Maximum energy above hull: "
+                    f"{candidate_filters.maximum_energy_above_hull_ev_atom} eV/atom.",
+                    "  - Exclude elements without conventionally stable isotopes: "
+                    + ", ".join(candidate_filters.exclude_elements),
+                ]
+            )
+
+    diagnostics = state.get("search_diagnostics", [])
+    if uses_materials_project and diagnostics:
+        latest_diagnostic = diagnostics[-1]
+        lines.extend(
+            [
+                "",
+                "## Candidate filtering",
+                "",
+                f"- Records returned by the API: {latest_diagnostic['retrieved_count']}",
+                f"- Records accepted locally: {latest_diagnostic['accepted_count']}",
+                f"- Records rejected by local verification: "
+                f"{latest_diagnostic['excluded_count']}",
+                f"- Report display limit: {report_limit}",
+                "- The API also applies the same element, metallicity, and "
+                "energy-above-hull filters before returning records.",
+            ]
+        )
+        if latest_diagnostic["excluded"]:
+            lines.append("- Local rejection details:")
+            for item in latest_diagnostic["excluded"][:10]:
+                lines.append(
+                    f"  - {item['formula']} ({item.get('material_id') or 'no ID'}): "
+                    + "; ".join(item["reasons"])
+                )
 
     if uses_materials_project:
         lines.extend(
@@ -522,7 +622,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
         )
 
     if ranked and uses_materials_project:
-        for index, material in enumerate(ranked, start=1):
+        for index, material in enumerate(ranked[:report_limit], start=1):
             stable = material["is_stable"]
             stable_text = "yes" if stable is True else "no" if stable is False else "unknown"
             hull = material["energy_above_hull_ev_atom"]
@@ -534,7 +634,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
                 f"{'unknown' if formation is None else f'{formation:.4f}'} |"
             )
     elif ranked:
-        for index, material in enumerate(ranked, start=1):
+        for index, material in enumerate(ranked[:report_limit], start=1):
             lines.append(
                 f"| {index} | {material['name']} | {material['band_gap_ev']} | "
                 f"{material['thermal_conductivity_w_mk']} | "

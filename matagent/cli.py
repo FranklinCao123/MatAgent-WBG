@@ -47,10 +47,21 @@ def main() -> None:
         help="Material data backend; defaults to MATAGENT_MATERIAL_BACKEND or mock.",
     )
     parser.add_argument(
+        "--fetch-limit",
         "--max-results",
+        dest="fetch_limit",
         type=int,
         default=None,
-        help="Maximum Materials Project records to request (1-100; default: 20).",
+        help=(
+            "Materials Project records fetched before local ranking (1-100; "
+            "--max-results is a compatibility alias; default: 100)."
+        ),
+    )
+    parser.add_argument(
+        "--report-limit",
+        type=int,
+        default=10,
+        help="Maximum ranked candidates shown in the report (1-100; default: 10).",
     )
     parser.add_argument(
         "--show-trace",
@@ -80,7 +91,7 @@ def main() -> None:
         tool_selector = build_tool_selector(settings)
         material_settings = MaterialDataSettings.from_environment(
             backend=args.material_backend,
-            max_results=args.max_results,
+            fetch_limit=args.fetch_limit,
         )
         material_search_tool = build_material_search_tool(material_settings)
     except (ConfigurationError, RuntimeError, ValueError) as error:
@@ -96,6 +107,7 @@ def main() -> None:
             checkpointer=checkpointer,
             material_backend=material_settings.backend,
             material_search_tool=material_search_tool,
+            report_limit=args.report_limit,
         )
         result = graph.invoke({"user_query": args.query}, config=config)
         summaries = (

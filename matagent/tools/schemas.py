@@ -12,6 +12,9 @@ class MaterialSearchArguments(BaseModel):
 
     band_gap_threshold_ev: float = Field(gt=0)
     band_gap_operator: Literal[">", ">="]
+    exclude_elements: list[str] = Field(default_factory=list)
+    require_nonmetal: bool = False
+    maximum_energy_above_hull_ev_atom: float | None = Field(default=None, ge=0)
 
 
 class MaterialCandidate(BaseModel):
@@ -21,15 +24,40 @@ class MaterialCandidate(BaseModel):
 
     name: str = Field(min_length=1)
     formula: str = Field(min_length=1)
+    elements: list[str] = Field(default_factory=list)
     band_gap_ev: float = Field(ge=0)
     data_source: Literal["mock", "materials_project"]
     data_status: str = Field(min_length=1)
     material_id: str | None = None
     is_stable: bool | None = None
+    is_metal: bool | None = None
+    theoretical: bool | None = None
     energy_above_hull_ev_atom: float | None = None
     formation_energy_per_atom_ev: float | None = None
     thermal_conductivity_w_mk: float | None = Field(default=None, ge=0)
     breakdown_field_mv_cm: float | None = Field(default=None, ge=0)
+
+
+class ExcludedMaterial(BaseModel):
+    """A rejected API record and the explicit local reasons for rejection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    material_id: str | None = None
+    formula: str
+    reasons: list[str] = Field(min_length=1)
+
+
+class MaterialSearchResult(BaseModel):
+    """Candidates plus auditable filtering diagnostics from a search backend."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source: Literal["mock", "materials_project"]
+    retrieved_count: int = Field(ge=0)
+    candidates: list[MaterialCandidate]
+    excluded: list[ExcludedMaterial] = Field(default_factory=list)
+    applied_filters: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolCallRequest(BaseModel):

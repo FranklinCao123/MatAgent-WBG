@@ -50,7 +50,7 @@ class MaterialDataSettings:
     backend: str = "mock"
     api_key: str | None = field(default=None, repr=False)
     base_url: str = "https://api.materialsproject.org"
-    max_results: int = 20
+    fetch_limit: int = 100
     timeout_seconds: float = 20.0
 
     @classmethod
@@ -58,11 +58,14 @@ class MaterialDataSettings:
         cls,
         *,
         backend: str | None = None,
-        max_results: int | None = None,
+        fetch_limit: int | None = None,
     ) -> "MaterialDataSettings":
         load_dotenv()
-        configured_max = max_results or int(
-            os.getenv("MATAGENT_MP_MAX_RESULTS", "20")
+        configured_limit = fetch_limit or int(
+            os.getenv(
+                "MATAGENT_MP_FETCH_LIMIT",
+                os.getenv("MATAGENT_MP_MAX_RESULTS", "100"),
+            )
         )
         return cls(
             backend=backend or os.getenv("MATAGENT_MATERIAL_BACKEND", "mock"),
@@ -71,7 +74,7 @@ class MaterialDataSettings:
                 "MATAGENT_MP_BASE_URL",
                 "https://api.materialsproject.org",
             ),
-            max_results=configured_max,
+            fetch_limit=configured_limit,
             timeout_seconds=float(os.getenv("MATAGENT_MP_TIMEOUT_SECONDS", "20")),
         )
 
@@ -126,7 +129,7 @@ def build_material_search_tool(settings: MaterialDataSettings):
             return MaterialsProjectSearchTool(
                 api_key=settings.api_key,
                 base_url=settings.base_url,
-                max_results=settings.max_results,
+                max_results=settings.fetch_limit,
                 timeout_seconds=settings.timeout_seconds,
             )
         except ValueError as error:

@@ -14,8 +14,11 @@ ALLOWED_CHECKPOINT_TYPES = [
     ("matagent.schemas", "ScreeningRequirements"),
     ("matagent.schemas", "RankingWeights"),
     ("matagent.schemas", "RankingPlan"),
+    ("matagent.schemas", "CandidateFilterPolicy"),
     ("matagent.tools.schemas", "MaterialSearchArguments"),
     ("matagent.tools.schemas", "MaterialCandidate"),
+    ("matagent.tools.schemas", "ExcludedMaterial"),
+    ("matagent.tools.schemas", "MaterialSearchResult"),
     ("matagent.tools.schemas", "ToolCallRequest"),
     ("matagent.tools.schemas", "ToolExecutionResult"),
 ]

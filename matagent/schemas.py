@@ -65,6 +65,17 @@ class RankingWeights(BaseModel):
         return self
 
 
+class CandidateFilterPolicy(BaseModel):
+    """Auditable hard filters applied before candidate ranking."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    exclude_elements: list[str] = Field(default_factory=list)
+    require_nonmetal: bool = False
+    maximum_energy_above_hull_ev_atom: float | None = Field(default=None, ge=0)
+    rationale: dict[str, str] = Field(default_factory=dict)
+
+
 class RankingPlan(BaseModel):
     """Auditable plan connecting parsed requirements to ranking behavior."""
 
@@ -72,5 +83,6 @@ class RankingPlan(BaseModel):
 
     strategy: Literal["weighted_mock_properties", "materials_project_stability"]
     weights: RankingWeights | None = None
+    candidate_filters: CandidateFilterPolicy | None = None
     rationale: dict[str, str]
     inferred_requirements: list[str] = Field(default_factory=list)

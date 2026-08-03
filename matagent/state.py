@@ -15,6 +15,7 @@ class AgentState(TypedDict, total=False):
     ranking_plan: RankingPlan | None
     pending_tool_calls: list[ToolCallRequest]
     tool_results: list[ToolExecutionResult]
+    search_diagnostics: list[dict[str, Any]]
     tool_iteration: int
     candidates: list[dict[str, Any]]
     ranked_candidates: list[dict[str, Any]]
@@ -22,3 +23,4 @@ class AgentState(TypedDict, total=False):
     status: str
     errors: list[str]
     final_report: str
+    report_limit: int

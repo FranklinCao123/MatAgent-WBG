@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from matagent.tools.schemas import MaterialCandidate, MaterialSearchArguments
+from matagent.tools.schemas import (
+    ExcludedMaterial,
+    MaterialCandidate,
+    MaterialSearchArguments,
+    MaterialSearchResult,
+)
 
 
 class MockMaterialSearchTool:
@@ -19,7 +24,7 @@ class MockMaterialSearchTool:
     def __init__(self, data_path: Path) -> None:
         self.data_path = data_path
 
-    def search(self, arguments: MaterialSearchArguments) -> list[dict[str, Any]]:
+    def search(self, arguments: MaterialSearchArguments) -> dict[str, Any]:
         with self.data_path.open("r", encoding="utf-8") as file:
             raw_materials: list[dict[str, Any]] = json.load(file)
 
@@ -36,15 +41,35 @@ class MockMaterialSearchTool:
         ]
 
         threshold = arguments.band_gap_threshold_ev
-        if arguments.band_gap_operator == ">":
-            return [
-                material
-                for material in materials
-                if material["band_gap_ev"] > threshold
-            ]
+        candidates = []
+        excluded = []
+        for material in materials:
+            accepted = (
+                material["band_gap_ev"] > threshold
+                if arguments.band_gap_operator == ">"
+                else material["band_gap_ev"] >= threshold
+            )
+            if accepted:
+                candidates.append(material)
+            else:
+                excluded.append(
+                    ExcludedMaterial(
+                        material_id=material.get("material_id"),
+                        formula=material["formula"],
+                        reasons=[
+                            "band gap does not satisfy "
+                            f"{arguments.band_gap_operator} {threshold} eV"
+                        ],
+                    )
+                )
 
-        return [
-            material
-            for material in materials
-            if material["band_gap_ev"] >= threshold
-        ]
+        return MaterialSearchResult(
+            source="mock",
+            retrieved_count=len(materials),
+            candidates=candidates,
+            excluded=excluded,
+            applied_filters={
+                "band_gap_operator": arguments.band_gap_operator,
+                "band_gap_threshold_ev": threshold,
+            },
+        ).model_dump(mode="json")

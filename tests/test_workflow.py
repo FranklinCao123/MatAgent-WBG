@@ -222,9 +222,12 @@ class MaterialSearchToolTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual([item["name"] for item in strict], ["Above"])
         self.assertEqual(
-            [item["name"] for item in inclusive],
+            [item["name"] for item in strict["candidates"]],
+            ["Above"],
+        )
+        self.assertEqual(
+            [item["name"] for item in inclusive["candidates"]],
             ["Equal", "Above"],
         )
 

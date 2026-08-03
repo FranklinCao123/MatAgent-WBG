@@ -6,6 +6,8 @@ from matagent.tools.registry import ToolExecutionError, ToolRegistry
 from matagent.tools.schemas import (
     MaterialSearchArguments,
     MaterialCandidate,
+    ExcludedMaterial,
+    MaterialSearchResult,
     ToolCallRequest,
     ToolExecutionResult,
 )
@@ -13,6 +15,8 @@ from matagent.tools.schemas import (
 __all__ = [
     "MaterialSearchArguments",
     "MaterialCandidate",
+    "ExcludedMaterial",
+    "MaterialSearchResult",
     "MaterialsProjectSearchTool",
     "MockMaterialSearchTool",
     "ToolCallRequest",

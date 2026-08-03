@@ -35,6 +35,7 @@ Requirement parsing and tool selection support two modes:
 matagent/
 |-- schemas.py               # Screening and ranking data contracts
 |-- config.py                # Environment-based LLM configuration
+|-- domain_policy.py         # Auditable conventional-device filter defaults
 |-- state.py                 # Shared LangGraph state
 |-- nodes.py                 # Workflow node logic
 |-- graph.py                 # Graph construction and conditional routing
@@ -103,7 +104,7 @@ MATAGENT_LLM_BASE_URL=https://api.deepseek.com
 MATAGENT_MATERIAL_BACKEND=mock
 MATAGENT_MP_API_KEY=<local secret>
 MATAGENT_MP_BASE_URL=https://api.materialsproject.org
-MATAGENT_MP_MAX_RESULTS=20
+MATAGENT_MP_FETCH_LIMIT=100
 MATAGENT_MP_TIMEOUT_SECONDS=20
 ```
 
@@ -113,15 +114,26 @@ Add `MATAGENT_MP_API_KEY` to the local `.env` file, then run:
 
 ```powershell
 python -m matagent.cli --mode deepseek `
-  --material-backend materials-project --max-results 20 --show-trace `
+  --material-backend materials-project --fetch-limit 100 `
+  --report-limit 10 --show-trace `
   "寻找带隙大于3 eV、适合高温功率器件的材料"
 ```
 
 The lightweight REST backend adds no new third-party dependency. It requests
 only material ID, formula, band gap, stability, energy above hull, and formation
 energy. The API key is sent in the `X-API-KEY` header and is never put in graph
-state, trace output, or the request URL. Results are capped at 20 by default and
-can be configured from 1 to 100.
+state, trace output, or the request URL. The API candidate pool is capped at 100
+lightweight records by default, while the report displays 10. `--max-results`
+remains as a compatibility alias for `--fetch-limit`.
+
+The live planner enforces a transparent first-pass quality policy before
+ranking: exclude elements without conventionally stable isotopes for the
+default non-nuclear device workflow, require `is_metal=false`, and cap energy
+above hull at 0.1 eV/atom. Materials Project applies the supported subset on the
+server, then local Pydantic-validated code repeats the exact checks and records
+rejection reasons. The API limits the `exclude_elements` string to 60
+characters, so the server receives a high-priority subset while local checking
+always uses the complete policy list.
 
 Live results use a transparent lexicographic order: stable entries first, then
 lower energy above hull, then higher band gap. Thermal conductivity and

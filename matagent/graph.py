@@ -43,11 +43,14 @@ def build_graph(
     checkpointer: BaseCheckpointSaver | None = None,
     material_backend: str = "mock",
     material_search_tool: Any | None = None,
+    report_limit: int = 10,
 ):
     """Build the graph with caller-selectable data and parser backends."""
 
     if material_backend not in ("mock", "materials-project"):
         raise ValueError(f"Unsupported material backend: {material_backend}")
+    if not 1 <= report_limit <= 100:
+        raise ValueError("report_limit must be between 1 and 100.")
     if material_backend == "materials-project" and material_search_tool is None:
         raise ValueError("Materials Project backend requires a configured search tool.")
     search_tool = material_search_tool or MockMaterialSearchTool(
@@ -73,6 +76,7 @@ def build_graph(
         lambda state: {
             **initialize_run(state),
             "material_backend": material_backend,
+            "report_limit": report_limit,
         },
     )
     builder.add_node(
