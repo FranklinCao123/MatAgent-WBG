@@ -13,10 +13,10 @@ from matagent.llm import (
     DeepSeekRequirementParser,
     DeepSeekToolSelector,
     RequirementParsingError,
+    RuleBasedRequirementParser,
     ToolSelectionError,
 )
-from matagent.nodes import (
-    parse_requirements,
+from matagent.workflow import (
     plan_screening,
     route_after_tool_decision,
     route_after_tool_execution,
@@ -321,14 +321,10 @@ class ScientificPlanningTests(unittest.TestCase):
 
 class RequirementParsingTests(unittest.TestCase):
     def test_chinese_power_query_is_structured(self) -> None:
-        update = parse_requirements(
-            {
-                "user_query": "寻找适合高温功率电子器件的材料",
-                "tool_history": [],
-            }
+        requirements = RuleBasedRequirementParser().parse(
+            "寻找适合高温功率电子器件的材料"
         )
 
-        requirements = update["requirements"]
         self.assertIsInstance(requirements, ScreeningRequirements)
         self.assertEqual(requirements.application, "power electronics")
         self.assertTrue(requirements.prefer_high_thermal_conductivity)

@@ -6,7 +6,7 @@ from typing import Any
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
-from matagent.nodes import (
+from matagent.workflow import (
     create_requirement_parser_node,
     create_tool_decision_node,
     create_tool_execution_node,

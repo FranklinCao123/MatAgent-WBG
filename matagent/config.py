@@ -12,6 +12,7 @@ from matagent.llm import (
     RuleBasedToolSelector,
     ToolSelector,
 )
+from matagent.llm.base import create_deepseek_client
 from matagent.llm.rule_based import RuleBasedRequirementParser
 from matagent.tools import MaterialsProjectSearchTool
 
@@ -62,10 +63,7 @@ class MaterialDataSettings:
     ) -> "MaterialDataSettings":
         load_dotenv()
         configured_limit = fetch_limit or int(
-            os.getenv(
-                "MATAGENT_MP_FETCH_LIMIT",
-                os.getenv("MATAGENT_MP_MAX_RESULTS", "100"),
-            )
+            os.getenv("MATAGENT_MP_FETCH_LIMIT", "100")
         )
         return cls(
             backend=backend or os.getenv("MATAGENT_MATERIAL_BACKEND", "mock"),
@@ -79,40 +77,32 @@ class MaterialDataSettings:
         )
 
 
-def build_requirement_parser(settings: LLMSettings) -> RequirementParser:
-    """Build the selected parser while keeping provider logic out of the graph."""
+def build_llm_components(
+    settings: LLMSettings,
+) -> tuple[RequirementParser, ToolSelector]:
+    """Build the matching requirement parser and tool selector once."""
 
     if settings.mode == "offline":
-        return RuleBasedRequirementParser()
-    if settings.mode == "deepseek":
-        if not settings.api_key:
-            raise ConfigurationError(
-                "DeepSeek mode requires MATAGENT_LLM_API_KEY."
-            )
-        return DeepSeekRequirementParser(
-            api_key=settings.api_key,
-            model=settings.model,
-            base_url=settings.base_url,
-        )
-    raise ConfigurationError(f"Unsupported LLM mode: {settings.mode}")
+        return RuleBasedRequirementParser(), RuleBasedToolSelector()
+    if settings.mode != "deepseek":
+        raise ConfigurationError(f"Unsupported LLM mode: {settings.mode}")
+    if not settings.api_key:
+        raise ConfigurationError("DeepSeek mode requires MATAGENT_LLM_API_KEY.")
 
-
-def build_tool_selector(settings: LLMSettings) -> ToolSelector:
-    """Build an offline or DeepSeek tool selector from the same settings."""
-
-    if settings.mode == "offline":
-        return RuleBasedToolSelector()
-    if settings.mode == "deepseek":
-        if not settings.api_key:
-            raise ConfigurationError(
-                "DeepSeek mode requires MATAGENT_LLM_API_KEY."
-            )
-        return DeepSeekToolSelector(
-            api_key=settings.api_key,
-            model=settings.model,
-            base_url=settings.base_url,
-        )
-    raise ConfigurationError(f"Unsupported LLM mode: {settings.mode}")
+    client = create_deepseek_client(
+        api_key=settings.api_key,
+        base_url=settings.base_url,
+    )
+    component_settings = {
+        "api_key": settings.api_key,
+        "model": settings.model,
+        "base_url": settings.base_url,
+        "client": client,
+    }
+    return (
+        DeepSeekRequirementParser(**component_settings),
+        DeepSeekToolSelector(**component_settings),
+    )
 
 
 def build_material_search_tool(settings: MaterialDataSettings):

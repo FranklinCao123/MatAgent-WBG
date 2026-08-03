@@ -37,11 +37,14 @@ matagent/
 |-- config.py                # Environment-based LLM configuration
 |-- domain_policy.py         # Auditable conventional-device filter defaults
 |-- state.py                 # Shared LangGraph state
-|-- nodes.py                 # Workflow node logic
 |-- graph.py                 # Graph construction and conditional routing
 |-- cli.py                   # Command-line interface
+|-- workflow/
+|   |-- core.py              # Parsing, tool selection, and execution nodes
+|   |-- screening.py         # Screening policy and candidate ranking
+|   `-- report.py            # Markdown report generation
 |-- llm/
-|   |-- base.py              # Requirement-parser interface
+|   |-- base.py              # Parser interface and shared client setup
 |   |-- rule_based.py        # Offline requirement parser
 |   |-- deepseek.py          # DeepSeek JSON requirement parser
 |   `-- tool_selector.py     # Offline and DeepSeek tool selectors
@@ -56,8 +59,6 @@ tests/
 |-- test_persistence.py      # SQLite checkpoint tests
 `-- test_materials_project.py # Remote-backend tests with fake HTTP
 ```
-
-`prototype.py` remains as a backward-compatible entry point.
 
 ## Install
 
@@ -123,8 +124,7 @@ The lightweight REST backend adds no new third-party dependency. It requests
 only material ID, formula, band gap, stability, energy above hull, and formation
 energy. The API key is sent in the `X-API-KEY` header and is never put in graph
 state, trace output, or the request URL. The API candidate pool is capped at 100
-lightweight records by default, while the report displays 10. `--max-results`
-remains as a compatibility alias for `--fetch-limit`.
+lightweight records by default, while the report displays 10.
 
 The live planner enforces a transparent first-pass quality policy before
 ranking: exclude elements without conventionally stable isotopes for the

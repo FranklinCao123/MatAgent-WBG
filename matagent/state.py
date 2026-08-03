@@ -3,7 +3,7 @@
 from typing import Any, TypedDict
 
 from matagent.schemas import RankingPlan, ScreeningRequirements
-from matagent.tools import ToolCallRequest, ToolExecutionResult
+from matagent.tools import ToolCallRequest
 
 
 class AgentState(TypedDict, total=False):
@@ -14,9 +14,7 @@ class AgentState(TypedDict, total=False):
     requirements: ScreeningRequirements | None
     ranking_plan: RankingPlan | None
     pending_tool_calls: list[ToolCallRequest]
-    tool_results: list[ToolExecutionResult]
-    search_diagnostics: list[dict[str, Any]]
-    tool_iteration: int
+    search_diagnostics: dict[str, Any] | None
     candidates: list[dict[str, Any]]
     ranked_candidates: list[dict[str, Any]]
     tool_history: list[dict[str, Any]]

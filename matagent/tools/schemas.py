@@ -27,11 +27,9 @@ class MaterialCandidate(BaseModel):
     elements: list[str] = Field(default_factory=list)
     band_gap_ev: float = Field(ge=0)
     data_source: Literal["mock", "materials_project"]
-    data_status: str = Field(min_length=1)
     material_id: str | None = None
     is_stable: bool | None = None
     is_metal: bool | None = None
-    theoretical: bool | None = None
     energy_above_hull_ev_atom: float | None = None
     formation_energy_per_atom_ev: float | None = None
     thermal_conductivity_w_mk: float | None = Field(default=None, ge=0)

@@ -79,7 +79,6 @@ class PersistenceTests(unittest.TestCase):
                 )
 
             self.assertEqual(second["user_query"], "Second general query")
-            self.assertEqual(second["tool_iteration"], 1)
             self.assertEqual(
                 [entry["step"] for entry in second["tool_history"]],
                 [

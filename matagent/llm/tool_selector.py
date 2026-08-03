@@ -3,6 +3,7 @@
 import json
 from typing import Any, Protocol
 
+from matagent.llm.base import create_deepseek_client
 from matagent.schemas import RankingPlan, ScreeningRequirements
 from matagent.tools import ToolCallRequest
 
@@ -66,18 +67,10 @@ class DeepSeekToolSelector:
         base_url: str = "https://api.deepseek.com",
         client: Any | None = None,
     ) -> None:
-        if not api_key:
-            raise ValueError("DeepSeek API key must not be empty.")
         self.model = model
-        if client is None:
-            try:
-                from openai import OpenAI
-            except ImportError as error:
-                raise RuntimeError(
-                    "DeepSeek mode requires the 'openai' Python package."
-                ) from error
-            client = OpenAI(api_key=api_key, base_url=base_url)
-        self._client = client
+        self._client = create_deepseek_client(
+            api_key=api_key, base_url=base_url, client=client
+        )
 
     def select(
         self,

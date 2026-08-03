@@ -8,9 +8,8 @@ from matagent.config import (
     ConfigurationError,
     LLMSettings,
     MaterialDataSettings,
+    build_llm_components,
     build_material_search_tool,
-    build_requirement_parser,
-    build_tool_selector,
 )
 from matagent.graph import build_graph
 from matagent.persistence import (
@@ -48,13 +47,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--fetch-limit",
-        "--max-results",
-        dest="fetch_limit",
         type=int,
         default=None,
         help=(
-            "Materials Project records fetched before local ranking (1-100; "
-            "--max-results is a compatibility alias; default: 100)."
+            "Materials Project records fetched before local ranking "
+            "(1-100; default: 100)."
         ),
     )
     parser.add_argument(
@@ -87,8 +84,7 @@ def main() -> None:
 
     try:
         settings = LLMSettings.from_environment(mode=args.mode)
-        requirement_parser = build_requirement_parser(settings)
-        tool_selector = build_tool_selector(settings)
+        requirement_parser, tool_selector = build_llm_components(settings)
         material_settings = MaterialDataSettings.from_environment(
             backend=args.material_backend,
             fetch_limit=args.fetch_limit,

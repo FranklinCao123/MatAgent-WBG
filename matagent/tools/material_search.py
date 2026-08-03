@@ -32,7 +32,6 @@ class MockMaterialSearchTool:
             MaterialCandidate.model_validate(
                 {
                     "formula": material.get("formula", material["name"]),
-                    "data_status": material.get("data_status", "illustrative_mock"),
                     **material,
                     "data_source": "mock",
                 }

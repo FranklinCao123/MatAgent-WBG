@@ -24,7 +24,6 @@ SUMMARY_FIELDS = (
     "band_gap",
     "is_stable",
     "is_metal",
-    "theoretical",
     "energy_above_hull",
     "formation_energy_per_atom",
 )
@@ -125,7 +124,6 @@ class MaterialsProjectSearchTool:
                     band_gap_ev=document["band_gap"],
                     is_stable=document.get("is_stable"),
                     is_metal=document.get("is_metal"),
-                    theoretical=document.get("theoretical"),
                     energy_above_hull_ev_atom=document.get("energy_above_hull"),
                     formation_energy_per_atom_ev=document.get(
                         "formation_energy_per_atom"
@@ -133,7 +131,6 @@ class MaterialsProjectSearchTool:
                     thermal_conductivity_w_mk=None,
                     breakdown_field_mv_cm=None,
                     data_source="materials_project",
-                    data_status="computed_materials_project",
                 )
             except (KeyError, TypeError, ValidationError) as error:
                 raise ValueError(
