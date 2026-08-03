@@ -105,6 +105,49 @@ def plan_screening(state: AgentState) -> dict[str, Any]:
         requirements.prefer_high_breakdown_field or is_power_application
     )
 
+    if state.get("material_backend") == "materials-project":
+        unavailable_priorities = []
+        if prioritize_thermal:
+            unavailable_priorities.append(
+                "Thermal conductivity is a requested priority but is unavailable "
+                "from the first Materials Project summary search."
+            )
+        if prioritize_breakdown:
+            unavailable_priorities.append(
+                "Breakdown field is a requested priority but is unavailable from "
+                "the first Materials Project summary search."
+            )
+        plan = RankingPlan(
+            strategy="materials_project_stability",
+            weights=None,
+            rationale={
+                "band_gap_ev": (
+                    "Band gap is enforced as a hard constraint and used as a "
+                    "tie-breaker."
+                ),
+                "is_stable": "Entries marked stable are ordered before other entries.",
+                "energy_above_hull": (
+                    "Lower energy above hull is preferred as a thermodynamic "
+                    "screening indicator."
+                ),
+            },
+            inferred_requirements=unavailable_priorities,
+        )
+        history = list(state.get("tool_history", []))
+        history.append(
+            {
+                "step": "plan_screening",
+                "type": "materials_project_stability_policy",
+                "status": "success",
+                "result": plan.model_dump(mode="json"),
+            }
+        )
+        return {
+            "ranking_plan": plan,
+            "status": "screening_planned",
+            "tool_history": history,
+        }
+
     raw_weights = {
         "band_gap_ev": 1.0,
         "thermal_conductivity_w_mk": 1.5 if prioritize_thermal else 1.0,
@@ -135,6 +178,7 @@ def plan_screening(state: AgentState) -> dict[str, Any]:
         )
 
     plan = RankingPlan(
+        strategy="weighted_mock_properties",
         weights=weights,
         rationale={
             "band_gap_ev": (
@@ -300,6 +344,34 @@ def rank_candidates(state: AgentState) -> dict[str, Any]:
     if not candidates:
         return {"ranked_candidates": []}
 
+    if state["ranking_plan"].strategy == "materials_project_stability":
+        def materials_project_key(material: dict[str, Any]) -> tuple:
+            energy_above_hull = material.get("energy_above_hull_ev_atom")
+            return (
+                material.get("is_stable") is not True,
+                float("inf") if energy_above_hull is None else energy_above_hull,
+                -material["band_gap_ev"],
+            )
+
+        ranked = sorted(candidates, key=materials_project_key)
+        history = list(state.get("tool_history", []))
+        history.append(
+            {
+                "step": "rank_candidates",
+                "type": "lexicographic_stability_rule",
+                "criteria": [
+                    "is_stable descending",
+                    "energy_above_hull ascending",
+                    "band_gap_ev descending",
+                ],
+            }
+        )
+        return {
+            "ranked_candidates": ranked,
+            "status": "ranked",
+            "tool_history": history,
+        }
+
     maxima = {
         "band_gap_ev": max(item["band_gap_ev"] for item in candidates),
         "thermal_conductivity_w_mk": max(
@@ -346,11 +418,18 @@ def generate_report(state: AgentState) -> dict[str, str]:
     ranked = state.get("ranked_candidates", [])
     errors = state.get("errors", [])
 
+    uses_materials_project = state.get("material_backend") == "materials-project"
+    warning = (
+        "> WARNING: Materials Project values are computed screening data; verify "
+        "important candidates against methods, uncertainty, and literature."
+        if uses_materials_project
+        else "> WARNING: This report uses illustrative mock data and must not be used "
+        "for scientific or engineering decisions."
+    )
     lines = [
         "# MatAgent-WBG Local Prototype Report",
         "",
-        "> WARNING: This report uses illustrative mock data and must not be used "
-        "for scientific or engineering decisions.",
+        warning,
         "",
         "## Interpreted request",
         "",
@@ -385,7 +464,7 @@ def generate_report(state: AgentState) -> dict[str, str]:
             ]
         )
 
-    if ranking_plan is not None:
+    if ranking_plan is not None and ranking_plan.weights is not None:
         lines.extend(
             [
                 "",
@@ -404,18 +483,57 @@ def generate_report(state: AgentState) -> dict[str, str]:
                 f"  - {item}" for item in ranking_plan.inferred_requirements
             )
 
-    lines.extend(
-        [
-        "",
-        "## Demonstration ranking",
-        "",
-        "| Rank | Material | Band gap (eV) | Thermal conductivity (W/mK) "
-        "| Breakdown field (MV/cm) | Demo score |",
-        "|---:|---|---:|---:|---:|---:|",
-        ]
-    )
+    if ranking_plan is not None and ranking_plan.weights is None:
+        lines.extend(
+            [
+                "",
+                "## Screening plan",
+                "",
+                "- Ranking order: stable entries first, then lower energy above hull, "
+                "then higher band gap.",
+                *[
+                    f"- {item}"
+                    for item in ranking_plan.inferred_requirements
+                ],
+            ]
+        )
 
-    if ranked:
+    if uses_materials_project:
+        lines.extend(
+            [
+                "",
+                "## Materials Project screening ranking",
+                "",
+                "| Rank | Formula | MP ID | Band gap (eV) | Stable | "
+                "Energy above hull (eV/atom) | Formation energy (eV/atom) |",
+                "|---:|---|---|---:|---|---:|---:|",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "## Demonstration ranking",
+                "",
+                "| Rank | Material | Band gap (eV) | Thermal conductivity (W/mK) "
+                "| Breakdown field (MV/cm) | Demo score |",
+                "|---:|---|---:|---:|---:|---:|",
+            ]
+        )
+
+    if ranked and uses_materials_project:
+        for index, material in enumerate(ranked, start=1):
+            stable = material["is_stable"]
+            stable_text = "yes" if stable is True else "no" if stable is False else "unknown"
+            hull = material["energy_above_hull_ev_atom"]
+            formation = material["formation_energy_per_atom_ev"]
+            lines.append(
+                f"| {index} | {material['formula']} | {material['material_id']} | "
+                f"{material['band_gap_ev']:.3f} | {stable_text} | "
+                f"{'unknown' if hull is None else f'{hull:.4f}'} | "
+                f"{'unknown' if formation is None else f'{formation:.4f}'} |"
+            )
+    elif ranked:
         for index, material in enumerate(ranked, start=1):
             lines.append(
                 f"| {index} | {material['name']} | {material['band_gap_ev']} | "
@@ -423,18 +541,29 @@ def generate_report(state: AgentState) -> dict[str, str]:
                 f"{material['breakdown_field_mv_cm']} | "
                 f"{material['demo_score']:.3f} |"
             )
+    elif uses_materials_project:
+        lines.append("| - | No candidates found | - | - | - | - | - |")
     else:
         lines.append("| - | No mock candidates found | - | - | - | - |")
 
-    lines.extend(
+    limitations = (
         [
-            "",
-            "## Limitations",
-            "",
+            "- Results come from a capped Materials Project summary query, not an "
+            "exhaustive screening campaign.",
+            "- Thermal conductivity and breakdown field are not supplied by this "
+            "first integration and are not used for ranking.",
+            "- Stability ordering is a transparent heuristic, not a validated device "
+            "performance model.",
+            "- Literature evidence, uncertainty, manufacturability, and cost are not "
+            "included yet.",
+        ]
+        if uses_materials_project
+        else [
             "- All property values are mock values created for workflow testing.",
             "- The score is a simple weighted rule, not a validated scientific model.",
             "- Literature evidence, uncertainty, manufacturability, and cost are not "
             "included in this prototype.",
         ]
     )
+    lines.extend(["", "## Limitations", "", *limitations])
     return {"final_report": "\n".join(lines), "status": "completed"}

@@ -7,6 +7,8 @@ from pathlib import Path
 from matagent.config import (
     ConfigurationError,
     LLMSettings,
+    MaterialDataSettings,
+    build_material_search_tool,
     build_requirement_parser,
     build_tool_selector,
 )
@@ -39,6 +41,18 @@ def main() -> None:
         help="Requirement parser backend; defaults to MATAGENT_LLM_MODE or offline.",
     )
     parser.add_argument(
+        "--material-backend",
+        choices=("mock", "materials-project"),
+        default=None,
+        help="Material data backend; defaults to MATAGENT_MATERIAL_BACKEND or mock.",
+    )
+    parser.add_argument(
+        "--max-results",
+        type=int,
+        default=None,
+        help="Maximum Materials Project records to request (1-100; default: 20).",
+    )
+    parser.add_argument(
         "--show-trace",
         action="store_true",
         help="Print the tool execution history after the report.",
@@ -64,7 +78,12 @@ def main() -> None:
         settings = LLMSettings.from_environment(mode=args.mode)
         requirement_parser = build_requirement_parser(settings)
         tool_selector = build_tool_selector(settings)
-    except (ConfigurationError, RuntimeError) as error:
+        material_settings = MaterialDataSettings.from_environment(
+            backend=args.material_backend,
+            max_results=args.max_results,
+        )
+        material_search_tool = build_material_search_tool(material_settings)
+    except (ConfigurationError, RuntimeError, ValueError) as error:
         parser.error(str(error))
 
     if args.show_checkpoints and not args.thread_id:
@@ -75,6 +94,8 @@ def main() -> None:
             requirement_parser=requirement_parser,
             tool_selector=tool_selector,
             checkpointer=checkpointer,
+            material_backend=material_settings.backend,
+            material_search_tool=material_search_tool,
         )
         result = graph.invoke({"user_query": args.query}, config=config)
         summaries = (

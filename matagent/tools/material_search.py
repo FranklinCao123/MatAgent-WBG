@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from matagent.tools.schemas import MaterialSearchArguments
+from matagent.tools.schemas import MaterialCandidate, MaterialSearchArguments
 
 
 class MockMaterialSearchTool:
@@ -21,7 +21,19 @@ class MockMaterialSearchTool:
 
     def search(self, arguments: MaterialSearchArguments) -> list[dict[str, Any]]:
         with self.data_path.open("r", encoding="utf-8") as file:
-            materials: list[dict[str, Any]] = json.load(file)
+            raw_materials: list[dict[str, Any]] = json.load(file)
+
+        materials = [
+            MaterialCandidate.model_validate(
+                {
+                    "formula": material.get("formula", material["name"]),
+                    "data_status": material.get("data_status", "illustrative_mock"),
+                    **material,
+                    "data_source": "mock",
+                }
+            ).model_dump(mode="json")
+            for material in raw_materials
+        ]
 
         threshold = arguments.band_gap_threshold_ev
         if arguments.band_gap_operator == ">":

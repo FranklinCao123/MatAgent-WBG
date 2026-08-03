@@ -70,6 +70,7 @@ class RankingPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    weights: RankingWeights
+    strategy: Literal["weighted_mock_properties", "materials_project_stability"]
+    weights: RankingWeights | None = None
     rationale: dict[str, str]
     inferred_requirements: list[str] = Field(default_factory=list)

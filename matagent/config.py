@@ -13,6 +13,7 @@ from matagent.llm import (
     ToolSelector,
 )
 from matagent.llm.rule_based import RuleBasedRequirementParser
+from matagent.tools import MaterialsProjectSearchTool
 
 
 class ConfigurationError(RuntimeError):
@@ -39,6 +40,39 @@ class LLMSettings:
                 "MATAGENT_LLM_BASE_URL",
                 "https://api.deepseek.com",
             ),
+        )
+
+
+@dataclass(frozen=True)
+class MaterialDataSettings:
+    """Material-search settings with the remote API key hidden from repr output."""
+
+    backend: str = "mock"
+    api_key: str | None = field(default=None, repr=False)
+    base_url: str = "https://api.materialsproject.org"
+    max_results: int = 20
+    timeout_seconds: float = 20.0
+
+    @classmethod
+    def from_environment(
+        cls,
+        *,
+        backend: str | None = None,
+        max_results: int | None = None,
+    ) -> "MaterialDataSettings":
+        load_dotenv()
+        configured_max = max_results or int(
+            os.getenv("MATAGENT_MP_MAX_RESULTS", "20")
+        )
+        return cls(
+            backend=backend or os.getenv("MATAGENT_MATERIAL_BACKEND", "mock"),
+            api_key=os.getenv("MATAGENT_MP_API_KEY"),
+            base_url=os.getenv(
+                "MATAGENT_MP_BASE_URL",
+                "https://api.materialsproject.org",
+            ),
+            max_results=configured_max,
+            timeout_seconds=float(os.getenv("MATAGENT_MP_TIMEOUT_SECONDS", "20")),
         )
 
 
@@ -76,3 +110,27 @@ def build_tool_selector(settings: LLMSettings) -> ToolSelector:
             base_url=settings.base_url,
         )
     raise ConfigurationError(f"Unsupported LLM mode: {settings.mode}")
+
+
+def build_material_search_tool(settings: MaterialDataSettings):
+    """Build a remote search tool, or return None for the graph's mock default."""
+
+    if settings.backend == "mock":
+        return None
+    if settings.backend == "materials-project":
+        if not settings.api_key:
+            raise ConfigurationError(
+                "Materials Project mode requires MATAGENT_MP_API_KEY."
+            )
+        try:
+            return MaterialsProjectSearchTool(
+                api_key=settings.api_key,
+                base_url=settings.base_url,
+                max_results=settings.max_results,
+                timeout_seconds=settings.timeout_seconds,
+            )
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
+    raise ConfigurationError(
+        f"Unsupported material backend: {settings.backend}"
+    )

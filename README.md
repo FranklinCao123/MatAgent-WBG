@@ -5,22 +5,23 @@ wide-bandgap semiconductor materials.
 
 ## Current scope
 
-The current version supports both an offline workflow and a DeepSeek-backed
-workflow:
+The current version supports offline or DeepSeek reasoning and mock or live
+Materials Project search backends:
 
 1. Parse a natural-language request into validated screening requirements.
 2. Enrich the request with a transparent demonstration domain policy.
 3. Build a request-aware ranking plan.
 4. Ask an offline or DeepSeek selector to propose a tool call.
 5. Validate the tool name and arguments through an allow-listed registry.
-6. Search a tiny local mock dataset using exact `>` or `>=` semantics.
+6. Search a tiny local mock dataset or a capped Materials Project summary query
+   using exact `>` or `>=` semantics.
 7. Route conditionally based on tool results.
 8. Rank candidates using the generated plan when results exist.
 9. Generate a Markdown report, including inferred requirements and errors.
 
-Offline mode requires no LLM API, GPU, scientific model, vector database, or
-server. All material property values are illustrative mock data and are not
-suitable for scientific or engineering decisions.
+Offline reasoning with the mock backend requires no API, GPU, scientific model,
+vector database, or server. All mock property values are illustrative and are
+not suitable for scientific or engineering decisions.
 
 Requirement parsing and tool selection support two modes:
 
@@ -45,11 +46,14 @@ matagent/
 |   `-- tool_selector.py     # Offline and DeepSeek tool selectors
 `-- tools/
     |-- material_search.py   # Replaceable material-search implementation
+    |-- materials_project.py # Lightweight Materials Project REST backend
     |-- registry.py          # Allow-listed execution registry
     `-- schemas.py           # Validated tool arguments and results
 
 tests/
-`-- test_workflow.py         # Standard-library automated tests
+|-- test_workflow.py         # Standard-library workflow tests
+|-- test_persistence.py      # SQLite checkpoint tests
+`-- test_materials_project.py # Remote-backend tests with fake HTTP
 ```
 
 `prototype.py` remains as a backward-compatible entry point.
@@ -96,7 +100,34 @@ MATAGENT_LLM_MODE=deepseek
 MATAGENT_LLM_API_KEY=<local secret>
 MATAGENT_LLM_MODEL=deepseek-v4-flash
 MATAGENT_LLM_BASE_URL=https://api.deepseek.com
+MATAGENT_MATERIAL_BACKEND=mock
+MATAGENT_MP_API_KEY=<local secret>
+MATAGENT_MP_BASE_URL=https://api.materialsproject.org
+MATAGENT_MP_MAX_RESULTS=20
+MATAGENT_MP_TIMEOUT_SECONDS=20
 ```
+
+## Search Materials Project
+
+Add `MATAGENT_MP_API_KEY` to the local `.env` file, then run:
+
+```powershell
+python -m matagent.cli --mode deepseek `
+  --material-backend materials-project --max-results 20 --show-trace `
+  "寻找带隙大于3 eV、适合高温功率器件的材料"
+```
+
+The lightweight REST backend adds no new third-party dependency. It requests
+only material ID, formula, band gap, stability, energy above hull, and formation
+energy. The API key is sent in the `X-API-KEY` header and is never put in graph
+state, trace output, or the request URL. Results are capped at 20 by default and
+can be configured from 1 to 100.
+
+Live results use a transparent lexicographic order: stable entries first, then
+lower energy above hull, then higher band gap. Thermal conductivity and
+breakdown field are unavailable in this first integration, so they are reported
+as missing and are not used for ranking. The mock backend retains its
+demonstration-only weighted ranking.
 
 ## Workflow
 

@@ -1,6 +1,7 @@
 """Construction of the MatAgent-WBG LangGraph workflow."""
 
 from pathlib import Path
+from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -40,10 +41,18 @@ def build_graph(
     requirement_parser: RequirementParser | None = None,
     tool_selector: ToolSelector | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
+    material_backend: str = "mock",
+    material_search_tool: Any | None = None,
 ):
     """Build the graph with caller-selectable data and parser backends."""
 
-    search_tool = MockMaterialSearchTool(data_path or default_mock_data_path())
+    if material_backend not in ("mock", "materials-project"):
+        raise ValueError(f"Unsupported material backend: {material_backend}")
+    if material_backend == "materials-project" and material_search_tool is None:
+        raise ValueError("Materials Project backend requires a configured search tool.")
+    search_tool = material_search_tool or MockMaterialSearchTool(
+        data_path or default_mock_data_path()
+    )
     parser = requirement_parser or RuleBasedRequirementParser()
     selector = tool_selector or RuleBasedToolSelector()
     registry = ToolRegistry()
@@ -59,7 +68,13 @@ def build_graph(
     tool_specs = registry.tool_specs()
 
     builder = StateGraph(AgentState)
-    builder.add_node("initialize_run", initialize_run)
+    builder.add_node(
+        "initialize_run",
+        lambda state: {
+            **initialize_run(state),
+            "material_backend": material_backend,
+        },
+    )
     builder.add_node(
         "parse_requirements",
         create_requirement_parser_node(parser),
