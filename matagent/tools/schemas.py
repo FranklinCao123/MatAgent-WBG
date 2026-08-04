@@ -17,6 +17,17 @@ class MaterialSearchArguments(BaseModel):
     maximum_energy_above_hull_ev_atom: float | None = Field(default=None, ge=0)
 
 
+class ScientificEvidenceArguments(BaseModel):
+    """Arguments accepted by semantic evidence retrieval."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=20)
+    minimum_similarity: float = Field(default=0.0, ge=-1.0, le=1.0)
+    material_filter: str | None = Field(default=None, min_length=1)
+
+
 class MaterialCandidate(BaseModel):
     """Normalized material record shared by local and remote search backends."""
 

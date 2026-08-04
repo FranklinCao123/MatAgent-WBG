@@ -8,15 +8,19 @@ from matagent.tools.schemas import (
     MaterialCandidate,
     ExcludedMaterial,
     MaterialSearchResult,
+    ScientificEvidenceArguments,
     ToolCallRequest,
     ToolExecutionResult,
 )
+from matagent.tools.scientific_evidence import ScientificEvidenceTool
 
 __all__ = [
     "MaterialSearchArguments",
     "MaterialCandidate",
     "ExcludedMaterial",
     "MaterialSearchResult",
+    "ScientificEvidenceArguments",
+    "ScientificEvidenceTool",
     "MaterialsProjectSearchTool",
     "MockMaterialSearchTool",
     "ToolCallRequest",

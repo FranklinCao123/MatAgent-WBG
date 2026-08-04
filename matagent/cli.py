@@ -10,6 +10,7 @@ from matagent.config import (
     MaterialDataSettings,
     build_llm_components,
     build_material_search_tool,
+    build_scientific_evidence_tool,
 )
 from matagent.graph import build_graph
 from matagent.persistence import (
@@ -61,6 +62,17 @@ def main() -> None:
         help="Maximum ranked candidates shown in the report (1-100; default: 10).",
     )
     parser.add_argument(
+        "--rag",
+        action="store_true",
+        help="Retrieve scientific evidence from the configured pgvector store.",
+    )
+    parser.add_argument(
+        "--evidence-top-k",
+        type=int,
+        default=5,
+        help="Maximum evidence chunks retrieved when --rag is enabled (1-20).",
+    )
+    parser.add_argument(
         "--show-trace",
         action="store_true",
         help="Print the tool execution history after the report.",
@@ -90,6 +102,9 @@ def main() -> None:
             fetch_limit=args.fetch_limit,
         )
         material_search_tool = build_material_search_tool(material_settings)
+        scientific_evidence_tool = (
+            build_scientific_evidence_tool() if args.rag else None
+        )
     except (ConfigurationError, RuntimeError, ValueError) as error:
         parser.error(str(error))
 
@@ -104,6 +119,8 @@ def main() -> None:
             material_backend=material_settings.backend,
             material_search_tool=material_search_tool,
             report_limit=args.report_limit,
+            scientific_evidence_tool=scientific_evidence_tool,
+            evidence_top_k=args.evidence_top_k,
         )
         result = graph.invoke({"user_query": args.query}, config=config)
         summaries = (

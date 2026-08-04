@@ -15,6 +15,14 @@ from matagent.llm import (
 from matagent.llm.base import create_deepseek_client
 from matagent.llm.rule_based import RuleBasedRequirementParser
 from matagent.tools import MaterialsProjectSearchTool
+from matagent.rag import (
+    EmbeddingSettings,
+    EvidenceRetriever,
+    OpenAICompatibleEmbeddingProvider,
+    SupabaseDataClient,
+    settings_from_environment,
+)
+from matagent.tools import ScientificEvidenceTool
 
 
 class ConfigurationError(RuntimeError):
@@ -126,4 +134,17 @@ def build_material_search_tool(settings: MaterialDataSettings):
             raise ConfigurationError(str(error)) from error
     raise ConfigurationError(
         f"Unsupported material backend: {settings.backend}"
+    )
+
+
+def build_scientific_evidence_tool() -> ScientificEvidenceTool:
+    """Build query embedding and pgvector retrieval as one Agent tool."""
+
+    embedding_provider = OpenAICompatibleEmbeddingProvider(
+        EmbeddingSettings.from_environment()
+    )
+    data_client = SupabaseDataClient(settings_from_environment())
+    return ScientificEvidenceTool(
+        embedding_provider=embedding_provider,
+        retriever=EvidenceRetriever(data_client),
     )

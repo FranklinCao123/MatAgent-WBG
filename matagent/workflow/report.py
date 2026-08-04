@@ -11,6 +11,11 @@ def _number(value: float | None) -> str:
     return "unknown" if value is None else f"{value:.4f}"
 
 
+def _table_text(value: str, *, limit: int = 240) -> str:
+    compact = " ".join(value.split()).replace("|", "\\|")
+    return compact if len(compact) <= limit else compact[: limit - 3] + "..."
+
+
 def generate_report(state: AgentState) -> dict[str, str]:
     requirements = state.get("requirements")
     plan = state.get("ranking_plan")
@@ -131,8 +136,52 @@ def generate_report(state: AgentState) -> dict[str, str]:
             "- The weighted score is not a validated scientific model.",
         ]
 
-    limitations.append(
-        "- Literature, uncertainty, manufacturability, and cost are not included."
-    )
+    if state.get("rag_enabled"):
+        evidence = state.get("scientific_evidence", [])
+        evidence_errors = state.get("evidence_errors", [])
+        if evidence:
+            table = [
+                "| # | Source | Year | Similarity | Evidence |",
+                "|---:|---|---:|---:|---|",
+            ]
+            for index, item in enumerate(evidence, 1):
+                title = _table_text(item["title"], limit=80)
+                source = (
+                    f"[{title}]({item['source_url']})"
+                    if item.get("source_url")
+                    else title
+                )
+                if item.get("doi"):
+                    source += f"; DOI `{item['doi']}`"
+                table.append(
+                    f"| {index} | {source} | "
+                    f"{item.get('publication_year') or 'unknown'} | "
+                    f"{item['similarity']:.3f} | "
+                    f"{_table_text(item['content'])} |"
+                )
+            _section(lines, "Retrieved scientific evidence", table)
+            limitations.append(
+                "- Retrieved passages support traceability but still require "
+                "method and uncertainty review."
+            )
+        elif evidence_errors:
+            _section(
+                lines,
+                "Scientific evidence",
+                ["- Evidence retrieval failed:"]
+                + [f"  - {error}" for error in evidence_errors],
+            )
+            limitations.append("- No scientific evidence was retrieved.")
+        else:
+            _section(
+                lines,
+                "Scientific evidence",
+                ["- No matching evidence is currently stored in the RAG database."],
+            )
+            limitations.append("- The RAG database returned no matching evidence.")
+
+    if not state.get("rag_enabled"):
+        limitations.append("- Literature evidence is not enabled for this run.")
+    limitations.append("- Uncertainty, manufacturability, and cost are not included.")
     _section(lines, "Limitations", limitations)
     return {"final_report": "\n".join(lines), "status": "completed"}

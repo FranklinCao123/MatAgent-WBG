@@ -73,7 +73,7 @@ class ToolRegistry:
 
         try:
             output = tool.handler(arguments)
-        except (OSError, ValueError, KeyError, TypeError) as error:
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
             raise ToolExecutionError(
                 f"Tool {call.name} failed ({type(error).__name__}): {error}"
             ) from error

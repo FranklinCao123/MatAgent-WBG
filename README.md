@@ -302,3 +302,20 @@ The API key is optional at the protocol level, but unauthenticated requests can
 receive HTTP 429 rate limits. Configure `MATAGENT_S2_API_KEY` for reliable
 authenticated access. Search never writes to the database; only the explicit
 `ingest` subcommand generates embeddings and writes evidence.
+
+## Agent RAG retrieval
+
+Enable query-time evidence retrieval explicitly:
+
+```powershell
+python -m matagent.cli --mode deepseek `
+  --material-backend materials-project `
+  --rag --evidence-top-k 5 `
+  "寻找适合高温功率器件的宽禁带材料"
+```
+
+After material ranking, the graph calls the allow-listed
+`retrieve_scientific_evidence` tool. It embeds the user query together with the
+leading candidate names, retrieves pgvector matches, and adds source title, DOI,
+URL, passage text, and similarity to the report. Retrieval failure is isolated:
+the material-screening result is still produced with an explicit evidence error.

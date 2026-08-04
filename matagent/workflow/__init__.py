@@ -1,6 +1,7 @@
 """Public nodes and routes used to assemble the screening graph."""
 
 from matagent.workflow.core import (
+    create_evidence_retrieval_node,
     create_requirement_parser_node,
     create_tool_decision_node,
     create_tool_execution_node,
@@ -14,6 +15,7 @@ from matagent.workflow.screening import plan_screening, rank_candidates
 
 __all__ = [
     "create_requirement_parser_node",
+    "create_evidence_retrieval_node",
     "create_tool_decision_node",
     "create_tool_execution_node",
     "generate_report",

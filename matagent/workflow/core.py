@@ -10,7 +10,7 @@ from matagent.llm import (
     ToolSelector,
 )
 from matagent.state import AgentState
-from matagent.tools import ToolExecutionError, ToolRegistry
+from matagent.tools import ToolCallRequest, ToolExecutionError, ToolRegistry
 
 
 def state_update(
@@ -31,10 +31,74 @@ def initialize_run(state: AgentState) -> dict[str, Any]:
         "search_diagnostics": None,
         "candidates": [],
         "ranked_candidates": [],
+        "scientific_evidence": [],
+        "evidence_query": None,
+        "evidence_errors": [],
         "tool_history": [],
         "errors": [],
         "status": "started",
     }
+
+
+def create_evidence_retrieval_node(
+    registry: ToolRegistry,
+    *,
+    top_k: int,
+) -> Callable[[AgentState], dict[str, Any]]:
+    """Call the registered RAG tool after candidate ranking."""
+
+    def retrieve_evidence(state: AgentState) -> dict[str, Any]:
+        candidate_names = list(
+            dict.fromkeys(
+                candidate.get("formula") or candidate.get("name")
+                for candidate in state.get("ranked_candidates", [])[:5]
+            )
+        )
+        candidate_names = [name for name in candidate_names if name]
+        query = state["user_query"]
+        if candidate_names:
+            query += ". Candidate materials: " + ", ".join(candidate_names)
+        call = ToolCallRequest(
+            id="rag_evidence_00",
+            name="retrieve_scientific_evidence",
+            arguments={
+                "query": query,
+                "top_k": top_k,
+                "minimum_similarity": 0.0,
+                "material_filter": None,
+            },
+        )
+        try:
+            result = registry.execute(call)
+        except ToolExecutionError as error:
+            return state_update(
+                state,
+                {
+                    "step": "retrieve_evidence",
+                    "tool": call.name,
+                    "status": "error",
+                    "error": str(error),
+                },
+                scientific_evidence=[],
+                evidence_query=query,
+                evidence_errors=[*state.get("evidence_errors", []), str(error)],
+                status="evidence_error",
+            )
+        evidence = result.output["evidence"]
+        return state_update(
+            state,
+            {
+                "step": "retrieve_evidence",
+                "tool": call.name,
+                "status": "success",
+                "evidence_count": len(evidence),
+            },
+            scientific_evidence=evidence,
+            evidence_query=result.output["query"],
+            status="evidence_retrieved" if evidence else "no_evidence",
+        )
+
+    return retrieve_evidence
 
 
 def create_requirement_parser_node(

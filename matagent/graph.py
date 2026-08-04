@@ -7,6 +7,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
 from matagent.workflow import (
+    create_evidence_retrieval_node,
     create_requirement_parser_node,
     create_tool_decision_node,
     create_tool_execution_node,
@@ -28,6 +29,7 @@ from matagent.state import AgentState
 from matagent.tools import (
     MaterialSearchArguments,
     MockMaterialSearchTool,
+    ScientificEvidenceArguments,
     ToolRegistry,
 )
 
@@ -44,6 +46,8 @@ def build_graph(
     material_backend: str = "mock",
     material_search_tool: Any | None = None,
     report_limit: int = 10,
+    scientific_evidence_tool: Any | None = None,
+    evidence_top_k: int = 5,
 ):
     """Build the graph with caller-selectable data and parser backends."""
 
@@ -53,6 +57,8 @@ def build_graph(
         raise ValueError("report_limit must be between 1 and 100.")
     if material_backend == "materials-project" and material_search_tool is None:
         raise ValueError("Materials Project backend requires a configured search tool.")
+    if not 1 <= evidence_top_k <= 20:
+        raise ValueError("evidence_top_k must be between 1 and 20.")
     search_tool = material_search_tool or MockMaterialSearchTool(
         data_path or default_mock_data_path()
     )
@@ -69,6 +75,15 @@ def build_graph(
         handler=search_tool.search,
     )
     tool_specs = registry.tool_specs()
+    if scientific_evidence_tool is not None:
+        registry.register(
+            name="retrieve_scientific_evidence",
+            description=(
+                "Retrieve attributable scientific passages by semantic similarity."
+            ),
+            arguments_model=ScientificEvidenceArguments,
+            handler=scientific_evidence_tool.search,
+        )
 
     builder = StateGraph(AgentState)
     builder.add_node(
@@ -77,6 +92,7 @@ def build_graph(
             **initialize_run(state),
             "material_backend": material_backend,
             "report_limit": report_limit,
+            "rag_enabled": scientific_evidence_tool is not None,
         },
     )
     builder.add_node(
@@ -90,6 +106,11 @@ def build_graph(
     builder.add_node("execute_tools", create_tool_execution_node(registry))
     builder.add_node("plan_screening", plan_screening)
     builder.add_node("rank_candidates", rank_candidates)
+    if scientific_evidence_tool is not None:
+        builder.add_node(
+            "retrieve_evidence",
+            create_evidence_retrieval_node(registry, top_k=evidence_top_k),
+        )
     builder.add_node("generate_report", generate_report)
 
     builder.add_edge(START, "initialize_run")
@@ -119,6 +140,10 @@ def build_graph(
             "report": "generate_report",
         },
     )
-    builder.add_edge("rank_candidates", "generate_report")
+    if scientific_evidence_tool is not None:
+        builder.add_edge("rank_candidates", "retrieve_evidence")
+        builder.add_edge("retrieve_evidence", "generate_report")
+    else:
+        builder.add_edge("rank_candidates", "generate_report")
     builder.add_edge("generate_report", END)
     return builder.compile(checkpointer=checkpointer)
