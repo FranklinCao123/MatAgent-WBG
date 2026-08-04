@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MatAgent-WBG</title>
+  <style>
+    :root { color-scheme: light; --ink:#18212b; --muted:#64748b; --line:#dbe3ea; --brand:#126b5d; --wash:#f4f8f7; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#eef3f2; font:15px/1.55 system-ui,"Microsoft YaHei",sans-serif; }
+    main { width:min(1080px,calc(100% - 32px)); margin:36px auto; }
+    header,section { background:white; border:1px solid var(--line); border-radius:14px; padding:24px; margin-bottom:16px; box-shadow:0 8px 28px #183a3210; }
+    h1,h2 { margin:0 0 10px; } h1 { font-size:28px; } h2 { font-size:18px; }
+    .subtitle,.muted { color:var(--muted); }
+    textarea { width:100%; min-height:110px; resize:vertical; border:1px solid #b8c6c3; border-radius:10px; padding:13px; font:inherit; }
+    .actions { display:flex; align-items:center; gap:18px; margin-top:14px; flex-wrap:wrap; }
+    button { border:0; border-radius:9px; padding:10px 18px; color:white; background:var(--brand); font-weight:650; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:wait; }
+    #download { background:#475569; }
+    #status { color:var(--brand); font-weight:650; }
+    .hidden { display:none; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { border-bottom:1px solid var(--line); padding:9px 7px; text-align:left; }
+    th { color:var(--muted); }
+    .evidence { padding:10px 0; border-bottom:1px solid var(--line); }
+    pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--wash); border-radius:10px; padding:16px; max-height:620px; overflow:auto; }
+    details { margin-top:12px; }
+    @media (max-width:760px) { .grid { grid-template-columns:1fr; } main { width:min(100% - 18px,1080px); margin:18px auto; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>MatAgent-WBG</h1>
+    <div class="subtitle">宽禁带半导体材料筛选 Agent · Materials Project + RAG + DeepSeek</div>
+  </header>
+
+  <section>
+    <h2>筛选要求</h2>
+    <textarea id="query">寻找带隙大于3 eV、适合高温功率器件并优先考虑高热导率的材料</textarea>
+    <div class="actions">
+      <label><input id="rag" type="checkbox" checked> 启用RAG文献证据</label>
+      <button id="run">开始筛选</button>
+      <span id="status">等待输入</span>
+    </div>
+  </section>
+
+  <div id="results" class="hidden">
+    <div class="grid">
+      <section><h2>候选材料</h2><div id="candidates"></div></section>
+      <section><h2>文献证据</h2><div id="evidence"></div></section>
+    </div>
+    <section>
+      <div class="actions"><h2 style="flex:1">筛选报告</h2><button id="download">下载 Markdown</button></div>
+      <pre id="report"></pre>
+      <details><summary>查看执行轨迹</summary><pre id="trace"></pre></details>
+    </section>
+  </div>
+</main>
+<script>
+  const byId = id => document.getElementById(id);
+  let latestReport = "";
+
+  function renderCandidates(items) {
+    if (!items.length) { byId("candidates").textContent = "没有候选材料。"; return; }
+    const table = document.createElement("table");
+    table.innerHTML = "<thead><tr><th>#</th><th>材料</th><th>带隙/eV</th><th>稳定</th></tr></thead>";
+    const body = document.createElement("tbody");
+    items.forEach((item, index) => {
+      const row = document.createElement("tr");
+      [index + 1, item.formula || item.name, item.band_gap_ev ?? "-", item.is_stable === true ? "是" : item.is_stable === false ? "否" : "-"].forEach(value => {
+        const cell = document.createElement("td"); cell.textContent = value; row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+    table.appendChild(body); byId("candidates").replaceChildren(table);
+  }
+
+  function renderEvidence(grouped) {
+    const root = byId("evidence"); root.replaceChildren();
+    const matches = Object.entries(grouped).filter(([, items]) => items.length);
+    if (!matches.length) { root.textContent = "当前候选没有命中文献。"; return; }
+    matches.forEach(([material, items]) => items.forEach(item => {
+      const card = document.createElement("div"); card.className = "evidence";
+      const title = document.createElement("strong"); title.textContent = `${material} · ${item.title}`;
+      const meta = document.createElement("div"); meta.className = "muted";
+      meta.textContent = `DOI: ${item.doi || "无"} · 相似度: ${Number(item.similarity).toFixed(3)}`;
+      card.append(title, meta); root.appendChild(card);
+    }));
+  }
+
+  byId("run").addEventListener("click", async () => {
+    const button = byId("run"), status = byId("status");
+    button.disabled = true; status.textContent = "Agent运行中：解析 → 工具 → RAG → 报告";
+    try {
+      const response = await fetch("/api/screen", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({query:byId("query").value, use_rag:byId("rag").checked})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "请求失败");
+      latestReport = data.report; renderCandidates(data.candidates); renderEvidence(data.evidence);
+      byId("report").textContent = data.report; byId("trace").textContent = JSON.stringify(data.trace, null, 2);
+      byId("results").classList.remove("hidden"); status.textContent = `完成 · ${data.status}`;
+    } catch (error) { status.textContent = `失败：${error.message}`; }
+    finally { button.disabled = false; }
+  });
+
+  byId("download").addEventListener("click", () => {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([latestReport], {type:"text/markdown;charset=utf-8"}));
+    link.download = "matagent-report.md"; link.click(); URL.revokeObjectURL(link.href);
+  });
+</script>
+</body>
+</html>

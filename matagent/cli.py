@@ -7,19 +7,14 @@ import sys
 
 from matagent.config import (
     ConfigurationError,
-    LLMSettings,
-    MaterialDataSettings,
-    build_llm_components,
-    build_material_search_tool,
-    build_scientific_evidence_tool,
 )
-from matagent.graph import build_graph
 from matagent.persistence import (
     DEFAULT_CHECKPOINT_PATH,
     checkpoint_summaries,
     open_sqlite_checkpointer,
     thread_config,
 )
+from matagent.runtime import RuntimeOptions, build_runtime_graph
 
 
 DEFAULT_QUERY = "寻找适合高温功率电子器件的宽禁带半导体材料"
@@ -111,38 +106,21 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    try:
-        settings = LLMSettings.from_environment(mode=args.mode)
-        requirement_parser, tool_selector, report_synthesizer = build_llm_components(
-            settings
-        )
-        material_settings = MaterialDataSettings.from_environment(
-            backend=args.material_backend,
-            fetch_limit=args.fetch_limit,
-        )
-        material_search_tool = build_material_search_tool(material_settings)
-        scientific_evidence_tool = (
-            build_scientific_evidence_tool() if args.rag else None
-        )
-    except (ConfigurationError, RuntimeError, ValueError) as error:
-        parser.error(str(error))
+    options = RuntimeOptions(
+        mode=args.mode,
+        material_backend=args.material_backend,
+        fetch_limit=args.fetch_limit,
+        report_limit=args.report_limit,
+        use_rag=args.rag,
+        evidence_top_k=args.evidence_top_k,
+        evidence_candidate_limit=args.evidence_candidate_limit,
+    )
 
     if args.show_checkpoints and not args.thread_id:
         parser.error("--show-checkpoints requires --thread-id.")
 
     def run(checkpointer=None, config=None):
-        graph = build_graph(
-            requirement_parser=requirement_parser,
-            tool_selector=tool_selector,
-            checkpointer=checkpointer,
-            material_backend=material_settings.backend,
-            material_search_tool=material_search_tool,
-            report_limit=args.report_limit,
-            scientific_evidence_tool=scientific_evidence_tool,
-            evidence_top_k=args.evidence_top_k,
-            evidence_candidate_limit=args.evidence_candidate_limit,
-            report_synthesizer=report_synthesizer,
-        )
+        graph = build_runtime_graph(options, checkpointer=checkpointer)
         result = graph.invoke({"user_query": args.query}, config=config)
         summaries = (
             checkpoint_summaries(graph, config)
@@ -158,7 +136,7 @@ def main() -> None:
                 result, summaries = run(checkpointer, config)
         else:
             result, summaries = run()
-    except (OSError, ValueError) as error:
+    except (ConfigurationError, OSError, RuntimeError, ValueError) as error:
         parser.error(str(error))
 
     print(result["final_report"])

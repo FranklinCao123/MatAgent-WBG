@@ -173,6 +173,22 @@ The default `.matagent/checkpoints.sqlite3` stores execution state and history,
 not API keys. Thread IDs are isolated. This is durable workflow memory, not a
 chat-history feature.
 
+## Lightweight web interface
+
+The browser UI is a thin layer over the same LangGraph runtime used by the CLI.
+It keeps API keys on the server and exposes only a screening request, ranked
+candidates, retrieved evidence, the final report, and an optional execution
+trace.
+
+```powershell
+python -m uvicorn matagent.web:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`. Interactive API documentation is available at
+`http://127.0.0.1:8000/docs`. The interface intentionally has no authentication,
+file upload, background queue, or frontend framework; bind it to localhost for
+development.
+
 ## Tests
 
 Tests use fake HTTP and LLM clients and make no paid calls:
