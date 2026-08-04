@@ -1,6 +1,14 @@
 """Deterministic requirement parser used for offline development and tests."""
 
+import re
+
 from matagent.schemas import ScreeningRequirements
+
+
+_BAND_GAP_PATTERN = re.compile(
+    r"(?:band\s*gap|bandgap|带隙|禁带)(?:[^\d]{0,20})(\d+(?:\.\d+)?)\s*(?:eV|电子伏特)",
+    re.IGNORECASE,
+)
 
 
 class RuleBasedRequirementParser:
@@ -18,17 +26,33 @@ class RuleBasedRequirementParser:
             term in query
             for term in ("high temperature", "high-temperature", "高温")
         )
+        band_gap_match = _BAND_GAP_PATTERN.search(user_query)
+        minimum_band_gap_ev = (
+            float(band_gap_match.group(1)) if band_gap_match else 2.0
+        )
+        strict_threshold = any(
+            term in query
+            for term in (">", "above", "greater than", "more than", "大于", "高于")
+        ) and not any(term in query for term in (">=", "at least", "不少于", "不低于"))
+        band_gap_operator = ">" if strict_threshold else ">="
+
+        assumptions = [
+            "Cost, manufacturability, and supply-chain constraints are not yet evaluated."
+        ]
+        if band_gap_match is None:
+            assumptions.insert(
+                0,
+                "No numerical band-gap constraint was found; the offline parser uses "
+                "a demonstration threshold of 2.0 eV.",
+            )
 
         return ScreeningRequirements(
             application=(
                 "power electronics" if is_power_electronics else "unspecified"
             ),
-            minimum_band_gap_ev=2.0,
-            band_gap_operator=">=",
+            minimum_band_gap_ev=minimum_band_gap_ev,
+            band_gap_operator=band_gap_operator,
             prefer_high_thermal_conductivity=is_high_temperature,
             prefer_high_breakdown_field=is_power_electronics,
-            assumptions=[
-                "Wide-bandgap screening uses a demonstration threshold of 2.0 eV.",
-                "Cost, manufacturability, and supply-chain constraints are not yet evaluated.",
-            ],
+            assumptions=assumptions,
         )

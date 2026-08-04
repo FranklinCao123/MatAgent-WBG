@@ -137,32 +137,42 @@ def generate_report(state: AgentState) -> dict[str, str]:
         ]
 
     if state.get("rag_enabled"):
-        evidence = state.get("scientific_evidence", [])
+        grouped = state.get("candidate_evidence", {})
         evidence_errors = state.get("evidence_errors", [])
-        if evidence:
+        if grouped:
             table = [
-                "| # | Source | Year | Similarity | Evidence |",
-                "|---:|---|---:|---:|---|",
+                "| Material | Evidence coverage | Source | Similarity | Evidence |",
+                "|---|---|---|---:|---|",
             ]
-            for index, item in enumerate(evidence, 1):
-                title = _table_text(item["title"], limit=80)
-                source = (
-                    f"[{title}]({item['source_url']})"
-                    if item.get("source_url")
-                    else title
+            for material, items in grouped.items():
+                coverage = (
+                    "none" if not items else "limited" if len(items) == 1 else "multiple"
                 )
-                if item.get("doi"):
-                    source += f"; DOI `{item['doi']}`"
-                table.append(
-                    f"| {index} | {source} | "
-                    f"{item.get('publication_year') or 'unknown'} | "
-                    f"{item['similarity']:.3f} | "
-                    f"{_table_text(item['content'])} |"
-                )
-            _section(lines, "Retrieved scientific evidence", table)
+                if not items:
+                    table.append(
+                        f"| {_table_text(material)} | none | - | - | "
+                        "No matching passage stored. |"
+                    )
+                    continue
+                for index, item in enumerate(items):
+                    title = _table_text(item["title"], limit=70)
+                    source = (
+                        f"[{title}]({item['source_url']})"
+                        if item.get("source_url")
+                        else title
+                    )
+                    if item.get("doi"):
+                        source += f"; DOI `{item['doi']}`"
+                    table.append(
+                        f"| {_table_text(material) if index == 0 else ''} | "
+                        f"{coverage if index == 0 else ''} | {source} | "
+                        f"{item['similarity']:.3f} | "
+                        f"{_table_text(item['content'])} |"
+                    )
+            _section(lines, "Candidate-specific scientific evidence", table)
             limitations.append(
-                "- Retrieved passages support traceability but still require "
-                "method and uncertainty review."
+                "- Evidence coverage labels count retrieved passages; they do not "
+                "validate property values or experimental quality."
             )
         elif evidence_errors:
             _section(

@@ -320,6 +320,16 @@ class ScientificPlanningTests(unittest.TestCase):
 
 
 class RequirementParsingTests(unittest.TestCase):
+    def test_chinese_numeric_band_gap_constraint_is_preserved(self) -> None:
+        requirements = RuleBasedRequirementParser().parse(
+            "寻找带隙大于3 eV、适合高温功率器件的材料"
+        )
+
+        self.assertEqual(requirements.minimum_band_gap_ev, 3.0)
+        self.assertEqual(requirements.band_gap_operator, ">")
+        self.assertEqual(requirements.application, "power electronics")
+        self.assertTrue(requirements.prefer_high_thermal_conductivity)
+
     def test_chinese_power_query_is_structured(self) -> None:
         requirements = RuleBasedRequirementParser().parse(
             "寻找适合高温功率电子器件的材料"

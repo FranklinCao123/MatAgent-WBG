@@ -18,6 +18,7 @@ class AgentState(TypedDict, total=False):
     candidates: list[dict[str, Any]]
     ranked_candidates: list[dict[str, Any]]
     scientific_evidence: list[dict[str, Any]]
+    candidate_evidence: dict[str, list[dict[str, Any]]]
     evidence_query: str | None
     evidence_errors: list[str]
     rag_enabled: bool

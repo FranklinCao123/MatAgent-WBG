@@ -69,8 +69,14 @@ def main() -> None:
     parser.add_argument(
         "--evidence-top-k",
         type=int,
+        default=2,
+        help="Evidence chunks retrieved per candidate with --rag (1-5).",
+    )
+    parser.add_argument(
+        "--evidence-candidate-limit",
+        type=int,
         default=5,
-        help="Maximum evidence chunks retrieved when --rag is enabled (1-20).",
+        help="Ranked candidates covered by RAG when enabled (1-10).",
     )
     parser.add_argument(
         "--show-trace",
@@ -121,6 +127,7 @@ def main() -> None:
             report_limit=args.report_limit,
             scientific_evidence_tool=scientific_evidence_tool,
             evidence_top_k=args.evidence_top_k,
+            evidence_candidate_limit=args.evidence_candidate_limit,
         )
         result = graph.invoke({"user_query": args.query}, config=config)
         summaries = (

@@ -310,12 +310,17 @@ Enable query-time evidence retrieval explicitly:
 ```powershell
 python -m matagent.cli --mode deepseek `
   --material-backend materials-project `
-  --rag --evidence-top-k 5 `
+  --rag --evidence-top-k 2 --evidence-candidate-limit 5 `
   "寻找适合高温功率器件的宽禁带材料"
 ```
 
 After material ranking, the graph calls the allow-listed
-`retrieve_scientific_evidence` tool. It embeds the user query together with the
-leading candidate names, retrieves pgvector matches, and adds source title, DOI,
-URL, passage text, and similarity to the report. Retrieval failure is isolated:
-the material-screening result is still produced with an explicit evidence error.
+`retrieve_candidate_evidence` tool. Candidate-specific queries are embedded in
+one batch, then each candidate receives its own pgvector Top-k result. The report
+groups DOI-backed passages by material and labels evidence coverage without
+changing the numerical ranking. Retrieval failure is isolated: the screening
+result is still produced with an explicit evidence error.
+
+`matagent.evaluation.evaluate_retrieval` computes macro-averaged Precision@k,
+Recall@k, mean reciprocal rank, and HitRate@k once a reviewed DOI-labeled
+question set is available.

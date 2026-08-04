@@ -32,6 +32,7 @@ def initialize_run(state: AgentState) -> dict[str, Any]:
         "candidates": [],
         "ranked_candidates": [],
         "scientific_evidence": [],
+        "candidate_evidence": {},
         "evidence_query": None,
         "evidence_errors": [],
         "tool_history": [],
@@ -44,6 +45,7 @@ def create_evidence_retrieval_node(
     registry: ToolRegistry,
     *,
     top_k: int,
+    candidate_limit: int,
 ) -> Callable[[AgentState], dict[str, Any]]:
     """Call the registered RAG tool after candidate ranking."""
 
@@ -51,21 +53,18 @@ def create_evidence_retrieval_node(
         candidate_names = list(
             dict.fromkeys(
                 candidate.get("formula") or candidate.get("name")
-                for candidate in state.get("ranked_candidates", [])[:5]
+                for candidate in state.get("ranked_candidates", [])[:candidate_limit]
             )
         )
         candidate_names = [name for name in candidate_names if name]
-        query = state["user_query"]
-        if candidate_names:
-            query += ". Candidate materials: " + ", ".join(candidate_names)
         call = ToolCallRequest(
             id="rag_evidence_00",
-            name="retrieve_scientific_evidence",
+            name="retrieve_candidate_evidence",
             arguments={
-                "query": query,
-                "top_k": top_k,
+                "user_query": state["user_query"],
+                "candidates": candidate_names,
+                "evidence_per_candidate": top_k,
                 "minimum_similarity": 0.0,
-                "material_filter": None,
             },
         )
         try:
@@ -80,11 +79,13 @@ def create_evidence_retrieval_node(
                     "error": str(error),
                 },
                 scientific_evidence=[],
-                evidence_query=query,
+                candidate_evidence={},
+                evidence_query=state["user_query"],
                 evidence_errors=[*state.get("evidence_errors", []), str(error)],
                 status="evidence_error",
             )
-        evidence = result.output["evidence"]
+        grouped = result.output["candidate_evidence"]
+        evidence = [item for items in grouped.values() for item in items]
         return state_update(
             state,
             {
@@ -92,9 +93,11 @@ def create_evidence_retrieval_node(
                 "tool": call.name,
                 "status": "success",
                 "evidence_count": len(evidence),
+                "candidate_count": len(grouped),
             },
             scientific_evidence=evidence,
-            evidence_query=result.output["query"],
+            candidate_evidence=grouped,
+            evidence_query=state["user_query"],
             status="evidence_retrieved" if evidence else "no_evidence",
         )
 

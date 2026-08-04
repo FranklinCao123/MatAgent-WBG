@@ -27,9 +27,9 @@ from matagent.llm import (
 )
 from matagent.state import AgentState
 from matagent.tools import (
+    CandidateEvidenceArguments,
     MaterialSearchArguments,
     MockMaterialSearchTool,
-    ScientificEvidenceArguments,
     ToolRegistry,
 )
 
@@ -47,7 +47,8 @@ def build_graph(
     material_search_tool: Any | None = None,
     report_limit: int = 10,
     scientific_evidence_tool: Any | None = None,
-    evidence_top_k: int = 5,
+    evidence_top_k: int = 2,
+    evidence_candidate_limit: int = 5,
 ):
     """Build the graph with caller-selectable data and parser backends."""
 
@@ -57,8 +58,10 @@ def build_graph(
         raise ValueError("report_limit must be between 1 and 100.")
     if material_backend == "materials-project" and material_search_tool is None:
         raise ValueError("Materials Project backend requires a configured search tool.")
-    if not 1 <= evidence_top_k <= 20:
-        raise ValueError("evidence_top_k must be between 1 and 20.")
+    if not 1 <= evidence_top_k <= 5:
+        raise ValueError("evidence_top_k must be between 1 and 5.")
+    if not 1 <= evidence_candidate_limit <= 10:
+        raise ValueError("evidence_candidate_limit must be between 1 and 10.")
     search_tool = material_search_tool or MockMaterialSearchTool(
         data_path or default_mock_data_path()
     )
@@ -77,12 +80,12 @@ def build_graph(
     tool_specs = registry.tool_specs()
     if scientific_evidence_tool is not None:
         registry.register(
-            name="retrieve_scientific_evidence",
+            name="retrieve_candidate_evidence",
             description=(
-                "Retrieve attributable scientific passages by semantic similarity."
+                "Retrieve attributable scientific passages for ranked materials."
             ),
-            arguments_model=ScientificEvidenceArguments,
-            handler=scientific_evidence_tool.search,
+            arguments_model=CandidateEvidenceArguments,
+            handler=scientific_evidence_tool.search_candidates,
         )
 
     builder = StateGraph(AgentState)
@@ -109,7 +112,11 @@ def build_graph(
     if scientific_evidence_tool is not None:
         builder.add_node(
             "retrieve_evidence",
-            create_evidence_retrieval_node(registry, top_k=evidence_top_k),
+            create_evidence_retrieval_node(
+                registry,
+                top_k=evidence_top_k,
+                candidate_limit=evidence_candidate_limit,
+            ),
         )
     builder.add_node("generate_report", generate_report)
 

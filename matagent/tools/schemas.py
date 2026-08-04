@@ -28,6 +28,17 @@ class ScientificEvidenceArguments(BaseModel):
     material_filter: str | None = Field(default=None, min_length=1)
 
 
+class CandidateEvidenceArguments(BaseModel):
+    """Arguments for evidence retrieval scoped to ranked candidates."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    user_query: str = Field(min_length=1)
+    candidates: list[str] = Field(min_length=1, max_length=10)
+    evidence_per_candidate: int = Field(default=2, ge=1, le=5)
+    minimum_similarity: float = Field(default=0.0, ge=-1.0, le=1.0)
+
+
 class MaterialCandidate(BaseModel):
     """Normalized material record shared by local and remote search backends."""
 
