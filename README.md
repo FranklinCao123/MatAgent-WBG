@@ -23,22 +23,20 @@ the LLM handles language, tool selection, and evidence-bounded communication.
 
 ## Workflow
 
-```text
-user query
-   ↓
-parse requirements ──error─────────────────────────────┐
-   ↓                                                   │
-plan screening                                        │
-   ↓                                                   │
-LLM tool selection → registry validation → tool call  │
-                                           ↓           │
-                                    rank candidates    │
-                                           ↓           │
-                              candidate-specific RAG   │
-                                           ↓           │
-                              grounded LLM synthesis   │
-                                           ↓           ↓
-                                deterministic Markdown report
+```mermaid
+flowchart TD
+    START([User query]) --> INIT[initialize_run]
+    INIT --> PARSE[parse_requirements]
+    PARSE -->|valid requirements| PLAN[plan_screening]
+    PARSE -->|parsing error| REPORT[generate_report]
+    PLAN --> DECIDE[decide_tools]
+    DECIDE -->|tool selected| EXECUTE[execute_tools]
+    DECIDE -->|no tool or error| REPORT
+    EXECUTE -->|candidates found| RANK[rank_candidates]
+    EXECUTE -->|no candidates or error| REPORT
+    RANK --> RAG[retrieve_evidence]
+    RAG --> REPORT
+    REPORT --> END([Final report])
 ```
 
 Every stage writes a compact execution record to `tool_history`. Unknown tools,
