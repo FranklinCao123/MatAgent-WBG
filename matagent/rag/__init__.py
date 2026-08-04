@@ -9,6 +9,13 @@ from matagent.rag.database import (
     check_database,
     settings_from_environment,
 )
+from matagent.rag.embeddings import (
+    EmbeddingConfigurationError,
+    EmbeddingError,
+    EmbeddingProvider,
+    EmbeddingSettings,
+    OpenAICompatibleEmbeddingProvider,
+)
 from matagent.rag.retriever import (
     EMBEDDING_DIMENSION,
     EvidenceChunk,
@@ -21,12 +28,17 @@ __all__ = [
     "DatabaseHealth",
     "DatabaseHealthError",
     "EMBEDDING_DIMENSION",
+    "EmbeddingConfigurationError",
+    "EmbeddingError",
+    "EmbeddingProvider",
+    "EmbeddingSettings",
     "EvidenceChunk",
     "EvidenceRetriever",
     "EvidenceSearch",
     "SupabaseAPIError",
     "SupabaseDataClient",
     "SupabaseSettings",
+    "OpenAICompatibleEmbeddingProvider",
     "check_database",
     "settings_from_environment",
 ]

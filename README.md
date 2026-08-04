@@ -240,3 +240,20 @@ Supabase SQL Editor. It creates:
 The dimension is fixed to the planned `BAAI/bge-m3` dense embedding contract.
 Embedding generation and document ingestion are separate modules and are not
 implemented in this migration.
+
+## Hosted embeddings
+
+Configure the server-only embedding settings shown in `.env.example`. The
+default uses SiliconFlow's OpenAI-compatible `BAAI/bge-m3` endpoint and returns
+1024-dimensional vectors without downloading the model locally.
+
+Verify the configured service with one small request:
+
+```powershell
+python -m matagent.rag.check_embedding
+```
+
+The command prints only the model name and returned dimension. It never prints
+the API key or embedding values. The provider batches inputs, preserves response
+order, and rejects malformed or dimensionally incompatible vectors before they
+reach PostgreSQL.
