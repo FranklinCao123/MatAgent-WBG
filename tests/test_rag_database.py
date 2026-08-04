@@ -55,12 +55,27 @@ class DatabaseHealthTests(unittest.TestCase):
             )
         )
         self.assertEqual(captured["request"].method, "POST")
+        self.assertEqual(
+            captured["request"].get_header("Apikey"), "secret-not-used"
+        )
+        self.assertIsNone(captured["request"].get_header("Authorization"))
 
     def test_environment_requires_both_settings(self) -> None:
         with patch("matagent.rag.database.load_dotenv"), patch.dict(
             "os.environ", {}, clear=True
         ):
             with self.assertRaisesRegex(DatabaseConfigurationError, "SUPABASE_URL"):
+                settings_from_environment()
+
+    def test_environment_rejects_data_api_path(self) -> None:
+        environment = {
+            "MATAGENT_SUPABASE_URL": "https://project.supabase.co/rest/v1/",
+            "MATAGENT_SUPABASE_SECRET_KEY": "secret-not-used",
+        }
+        with patch("matagent.rag.database.load_dotenv"), patch.dict(
+            "os.environ", environment, clear=True
+        ):
+            with self.assertRaisesRegex(DatabaseConfigurationError, "without /rest/v1"):
                 settings_from_environment()
 
 

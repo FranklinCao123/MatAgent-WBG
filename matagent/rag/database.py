@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
@@ -53,6 +54,12 @@ def settings_from_environment() -> SupabaseSettings:
         )
     if not url.startswith("https://"):
         raise DatabaseConfigurationError("MATAGENT_SUPABASE_URL must use HTTPS.")
+    parsed_url = urlsplit(url)
+    if parsed_url.path not in ("", "/") or parsed_url.query:
+        raise DatabaseConfigurationError(
+            "MATAGENT_SUPABASE_URL must be the Project URL without /rest/v1 "
+            "or query parameters."
+        )
     return SupabaseSettings(url=url, secret_key=secret_key)
 
 
@@ -68,7 +75,6 @@ def check_database(
         data=b"{}",
         headers={
             "apikey": settings.secret_key,
-            "Authorization": f"Bearer {settings.secret_key}",
             "Content-Type": "application/json",
         },
         method="POST",

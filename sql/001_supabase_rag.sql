@@ -26,3 +26,6 @@ revoke all on function public.matagent_database_health() from public;
 revoke all on function public.matagent_database_health() from anon;
 revoke all on function public.matagent_database_health() from authenticated;
 grant execute on function public.matagent_database_health() to service_role;
+
+-- Make the newly created RPC visible to the Data API immediately.
+notify pgrst, 'reload schema';
