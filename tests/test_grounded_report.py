@@ -93,6 +93,51 @@ class DeepSeekReportTests(unittest.TestCase):
         context = json.loads(client.last_request["messages"][1]["content"])
         self.assertEqual(len(context["ranked_candidates"]), 3)
 
+    def test_evidence_supported_candidate_enters_llm_context(self) -> None:
+        client = FakeClient(
+            {
+                "executive_summary": "AlN has retrieved evidence.",
+                "candidate_assessments": [
+                    {
+                        "material": "AlN",
+                        "assessment": "Evidence is available.",
+                        "confidence": "moderate",
+                        "evidence_dois": ["10.1/aln"],
+                    }
+                ],
+                "caveats": [],
+            }
+        )
+        synthesizer = DeepSeekReportSynthesizer(
+            api_key="test-key",
+            client=client,
+        )
+
+        synthesizer.synthesize(
+            user_query="screen materials",
+            requirements=requirements(),
+            ranked_candidates=[
+                {"name": "CO2", "band_gap_ev": 6.6},
+                {"name": "CsN3", "band_gap_ev": 4.2},
+                {"name": "RbN3", "band_gap_ev": 4.1},
+                {"name": "AlN", "band_gap_ev": 4.0},
+            ],
+            candidate_evidence={
+                "AlN": [
+                    {
+                        "doi": "10.1/aln",
+                        "title": "AlN evidence",
+                        "content": "High-temperature device evidence.",
+                        "similarity": 0.8,
+                    }
+                ]
+            },
+        )
+
+        context = json.loads(client.last_request["messages"][1]["content"])
+        materials = [item["material"] for item in context["ranked_candidates"]]
+        self.assertEqual(materials, ["AlN", "CO2", "CsN3"])
+
     def test_invented_doi_is_rejected(self) -> None:
         client = FakeClient(
             {

@@ -49,7 +49,7 @@ def build_graph(
     report_limit: int = 10,
     scientific_evidence_tool: Any | None = None,
     evidence_top_k: int = 2,
-    evidence_candidate_limit: int = 5,
+    evidence_candidate_limit: int = 10,
     report_synthesizer: ReportSynthesizer | None = None,
 ):
     """Build the graph with caller-selectable data and parser backends."""

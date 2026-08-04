@@ -134,7 +134,12 @@ class DeepSeekReportSynthesizer:
         ranked_candidates: list[dict[str, Any]],
         candidate_evidence: dict[str, list[dict[str, Any]]],
     ) -> GroundedReport:
-        candidates = [_candidate_context(item) for item in ranked_candidates[:3]]
+        selected = _evidence_first_candidates(
+            ranked_candidates,
+            candidate_evidence,
+            limit=3,
+        )
+        candidates = [_candidate_context(item) for item in selected]
         allowed_materials = {item["material"] for item in candidates}
         evidence = {
             material: [
@@ -195,6 +200,30 @@ class DeepSeekReportSynthesizer:
             ):
                 raise ReportSynthesisError("DeepSeek report invented a DOI citation.")
         return report
+
+
+def _evidence_first_candidates(
+    ranked_candidates: list[dict[str, Any]],
+    candidate_evidence: dict[str, list[dict[str, Any]]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Keep scientific rank order while giving retrieved evidence a voice."""
+
+    supported_names = {
+        material for material, evidence in candidate_evidence.items() if evidence
+    }
+    supported = [
+        candidate
+        for candidate in ranked_candidates
+        if (candidate.get("name") or candidate.get("formula")) in supported_names
+    ]
+    unsupported = [
+        candidate
+        for candidate in ranked_candidates
+        if (candidate.get("name") or candidate.get("formula")) not in supported_names
+    ]
+    return [*supported, *unsupported][:limit]
 
 
 def _candidate_context(candidate: dict[str, Any]) -> dict[str, Any]:

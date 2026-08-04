@@ -86,8 +86,8 @@ def main() -> None:
     parser.add_argument(
         "--evidence-candidate-limit",
         type=int,
-        default=5,
-        help="Ranked candidates covered by RAG when enabled (1-10).",
+        default=10,
+        help="Ranked candidates covered by RAG when enabled (1-10; default: 10).",
     )
     parser.add_argument(
         "--show-trace",
