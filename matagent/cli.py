@@ -113,7 +113,9 @@ def main() -> None:
 
     try:
         settings = LLMSettings.from_environment(mode=args.mode)
-        requirement_parser, tool_selector = build_llm_components(settings)
+        requirement_parser, tool_selector, report_synthesizer = build_llm_components(
+            settings
+        )
         material_settings = MaterialDataSettings.from_environment(
             backend=args.material_backend,
             fetch_limit=args.fetch_limit,
@@ -139,6 +141,7 @@ def main() -> None:
             scientific_evidence_tool=scientific_evidence_tool,
             evidence_top_k=args.evidence_top_k,
             evidence_candidate_limit=args.evidence_candidate_limit,
+            report_synthesizer=report_synthesizer,
         )
         result = graph.invoke({"user_query": args.query}, config=config)
         summaries = (

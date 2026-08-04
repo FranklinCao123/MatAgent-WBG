@@ -6,7 +6,6 @@ from matagent.graph import build_graph
 from matagent.rag.retriever import EMBEDDING_DIMENSION, EvidenceChunk
 from matagent.tools import (
     CandidateEvidenceArguments,
-    ScientificEvidenceArguments,
     ScientificEvidenceTool,
 )
 
@@ -75,30 +74,6 @@ class FakeGraphEvidenceTool:
 
 
 class ScientificEvidenceToolTests(unittest.TestCase):
-    def test_query_is_embedded_once_and_retrieval_is_bounded(self) -> None:
-        embedding_provider = FakeEmbeddingProvider()
-        retriever = FakeRetriever()
-        tool = ScientificEvidenceTool(
-            embedding_provider=embedding_provider,
-            retriever=retriever,
-        )
-
-        result = tool.search(
-            ScientificEvidenceArguments(
-                query="high-temperature SiC power devices",
-                top_k=3,
-                minimum_similarity=0.4,
-            )
-        )
-
-        self.assertEqual(
-            embedding_provider.inputs,
-            [["high-temperature SiC power devices"]],
-        )
-        self.assertEqual(retriever.searches[0].match_count, 3)
-        self.assertEqual(retriever.searches[0].match_threshold, 0.4)
-        self.assertEqual(result["evidence"][0]["doi"], "10.0000/example")
-
     def test_candidate_queries_share_one_embedding_batch(self) -> None:
         embedding_provider = FakeEmbeddingProvider()
         retriever = FakeRetriever()

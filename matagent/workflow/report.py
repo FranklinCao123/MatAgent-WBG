@@ -1,5 +1,7 @@
 """Markdown report rendering for workflow results."""
 
+from matagent.llm import ReportSynthesisError, ReportSynthesizer
+from matagent.schemas import GroundedReport
 from matagent.state import AgentState
 
 
@@ -16,7 +18,7 @@ def _table_text(value: str, *, limit: int = 240) -> str:
     return compact if len(compact) <= limit else compact[: limit - 3] + "..."
 
 
-def generate_report(state: AgentState) -> dict[str, str]:
+def _generate_base_report(state: AgentState) -> str:
     requirements = state.get("requirements")
     plan = state.get("ranking_plan")
     ranked = state.get("ranked_candidates", [])
@@ -194,4 +196,83 @@ def generate_report(state: AgentState) -> dict[str, str]:
         limitations.append("- Literature evidence is not enabled for this run.")
     limitations.append("- Uncertainty, manufacturability, and cost are not included.")
     _section(lines, "Limitations", limitations)
-    return {"final_report": "\n".join(lines), "status": "completed"}
+    return "\n".join(lines)
+
+
+def _render_grounded_report(report: GroundedReport) -> str:
+    lines = ["## Grounded LLM assessment", "", report.executive_summary]
+    for item in report.candidate_assessments:
+        lines += [
+            "",
+            f"### {item.material} — {item.confidence} confidence",
+            "",
+            item.assessment,
+            "",
+            "- Evidence DOI: "
+            + (", ".join(f"`{doi}`" for doi in item.evidence_dois) or "none retrieved"),
+        ]
+    if report.caveats:
+        lines += ["", "### Synthesis caveats", ""] + [
+            f"- {caveat}" for caveat in report.caveats
+        ]
+    return "\n".join(lines)
+
+
+def create_report_node(
+    synthesizer: ReportSynthesizer | None = None,
+):
+    """Return deterministic reporting with optional citation-checked synthesis."""
+
+    def generate(state: AgentState) -> dict:
+        base_report = _generate_base_report(state)
+        if synthesizer is None or not state.get("ranked_candidates"):
+            return {"final_report": base_report, "status": "completed"}
+        try:
+            synthesis = synthesizer.synthesize(
+                user_query=state["user_query"],
+                requirements=state["requirements"],
+                ranked_candidates=state["ranked_candidates"],
+                candidate_evidence=state.get("candidate_evidence", {}),
+            )
+        except ReportSynthesisError as error:
+            history = [
+                *state.get("tool_history", []),
+                {
+                    "step": "synthesize_report",
+                    "synthesizer": synthesizer.name,
+                    "status": "error",
+                    "error": str(error),
+                },
+            ]
+            fallback = (
+                f"{base_report}\n\n## Grounded LLM assessment\n\n"
+                f"- Synthesis unavailable; deterministic report retained: {error}"
+            )
+            return {
+                "final_report": fallback,
+                "tool_history": history,
+                "status": "completed",
+            }
+
+        history = [
+            *state.get("tool_history", []),
+            {
+                "step": "synthesize_report",
+                "synthesizer": synthesizer.name,
+                "status": "success",
+                "candidate_count": len(synthesis.candidate_assessments),
+            },
+        ]
+        return {
+            "final_report": f"{base_report}\n\n{_render_grounded_report(synthesis)}",
+            "tool_history": history,
+            "status": "completed",
+        }
+
+    return generate
+
+
+def generate_report(state: AgentState) -> dict:
+    """Backward-compatible deterministic report node used by offline tests."""
+
+    return create_report_node()(state)

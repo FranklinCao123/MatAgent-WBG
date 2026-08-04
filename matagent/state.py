@@ -17,9 +17,7 @@ class AgentState(TypedDict, total=False):
     search_diagnostics: dict[str, Any] | None
     candidates: list[dict[str, Any]]
     ranked_candidates: list[dict[str, Any]]
-    scientific_evidence: list[dict[str, Any]]
     candidate_evidence: dict[str, list[dict[str, Any]]]
-    evidence_query: str | None
     evidence_errors: list[str]
     rag_enabled: bool
     tool_history: list[dict[str, Any]]

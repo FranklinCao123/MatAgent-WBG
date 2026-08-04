@@ -2,7 +2,7 @@
 
 from typing import Any, Protocol
 
-from matagent.schemas import ScreeningRequirements
+from matagent.schemas import GroundedReport, ScreeningRequirements
 
 
 class RequirementParsingError(RuntimeError):
@@ -16,6 +16,25 @@ class RequirementParser(Protocol):
 
     def parse(self, user_query: str) -> ScreeningRequirements:
         """Parse a natural-language query into validated requirements."""
+
+
+class ReportSynthesisError(RuntimeError):
+    """Raised when an LLM cannot produce a citation-safe final synthesis."""
+
+
+class ReportSynthesizer(Protocol):
+    """Contract for optional grounded final-report generation."""
+
+    name: str
+
+    def synthesize(
+        self,
+        *,
+        user_query: str,
+        requirements: ScreeningRequirements,
+        ranked_candidates: list[dict[str, Any]],
+        candidate_evidence: dict[str, list[dict[str, Any]]],
+    ) -> GroundedReport: ...
 
 
 def create_deepseek_client(

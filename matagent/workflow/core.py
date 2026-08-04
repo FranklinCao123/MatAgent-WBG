@@ -31,9 +31,7 @@ def initialize_run(state: AgentState) -> dict[str, Any]:
         "search_diagnostics": None,
         "candidates": [],
         "ranked_candidates": [],
-        "scientific_evidence": [],
         "candidate_evidence": {},
-        "evidence_query": None,
         "evidence_errors": [],
         "tool_history": [],
         "errors": [],
@@ -78,27 +76,23 @@ def create_evidence_retrieval_node(
                     "status": "error",
                     "error": str(error),
                 },
-                scientific_evidence=[],
                 candidate_evidence={},
-                evidence_query=state["user_query"],
                 evidence_errors=[*state.get("evidence_errors", []), str(error)],
                 status="evidence_error",
             )
         grouped = result.output["candidate_evidence"]
-        evidence = [item for items in grouped.values() for item in items]
+        evidence_count = sum(len(items) for items in grouped.values())
         return state_update(
             state,
             {
                 "step": "retrieve_evidence",
                 "tool": call.name,
                 "status": "success",
-                "evidence_count": len(evidence),
+                "evidence_count": evidence_count,
                 "candidate_count": len(grouped),
             },
-            scientific_evidence=evidence,
             candidate_evidence=grouped,
-            evidence_query=state["user_query"],
-            status="evidence_retrieved" if evidence else "no_evidence",
+            status="evidence_retrieved" if evidence_count else "no_evidence",
         )
 
     return retrieve_evidence

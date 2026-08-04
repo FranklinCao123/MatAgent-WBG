@@ -2,13 +2,18 @@
 
 from typing import Any
 
-from matagent.domain_policy import (
-    DEFAULT_MAX_ENERGY_ABOVE_HULL_EV_ATOM,
-    DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS,
-)
 from matagent.schemas import CandidateFilterPolicy, RankingPlan, RankingWeights
 from matagent.state import AgentState
 from matagent.workflow.core import state_update
+
+
+DEFAULT_MAX_ENERGY_ABOVE_HULL_EV_ATOM = 0.1
+DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS = (
+    "Tc", "Pm", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",
+    "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr",
+    "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl",
+    "Mc", "Lv", "Ts", "Og",
+)
 
 
 def _planned(state: AgentState, plan: RankingPlan, plan_type: str) -> dict[str, Any]:

@@ -11,7 +11,7 @@ from matagent.workflow import (
     create_requirement_parser_node,
     create_tool_decision_node,
     create_tool_execution_node,
-    generate_report,
+    create_report_node,
     initialize_run,
     plan_screening,
     rank_candidates,
@@ -20,6 +20,7 @@ from matagent.workflow import (
     route_after_tool_execution,
 )
 from matagent.llm import (
+    ReportSynthesizer,
     RequirementParser,
     RuleBasedRequirementParser,
     RuleBasedToolSelector,
@@ -49,6 +50,7 @@ def build_graph(
     scientific_evidence_tool: Any | None = None,
     evidence_top_k: int = 2,
     evidence_candidate_limit: int = 5,
+    report_synthesizer: ReportSynthesizer | None = None,
 ):
     """Build the graph with caller-selectable data and parser backends."""
 
@@ -118,7 +120,7 @@ def build_graph(
                 candidate_limit=evidence_candidate_limit,
             ),
         )
-    builder.add_node("generate_report", generate_report)
+    builder.add_node("generate_report", create_report_node(report_synthesizer))
 
     builder.add_edge(START, "initialize_run")
     builder.add_edge("initialize_run", "parse_requirements")

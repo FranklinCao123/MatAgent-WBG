@@ -10,12 +10,13 @@ from matagent.workflow.core import (
     route_after_tool_decision,
     route_after_tool_execution,
 )
-from matagent.workflow.report import generate_report
+from matagent.workflow.report import create_report_node, generate_report
 from matagent.workflow.screening import plan_screening, rank_candidates
 
 __all__ = [
     "create_requirement_parser_node",
     "create_evidence_retrieval_node",
+    "create_report_node",
     "create_tool_decision_node",
     "create_tool_execution_node",
     "generate_report",

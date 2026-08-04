@@ -3,10 +3,7 @@
 from matagent.material_names import material_aliases
 from matagent.rag.embeddings import EmbeddingProvider
 from matagent.rag.retriever import EvidenceRetriever, EvidenceSearch
-from matagent.tools.schemas import (
-    CandidateEvidenceArguments,
-    ScientificEvidenceArguments,
-)
+from matagent.tools.schemas import CandidateEvidenceArguments
 
 
 class ScientificEvidenceTool:
@@ -20,23 +17,6 @@ class ScientificEvidenceTool:
     ) -> None:
         self._embedding_provider = embedding_provider
         self._retriever = retriever
-
-    def search(self, arguments: ScientificEvidenceArguments) -> dict:
-        vectors = self._embedding_provider.embed([arguments.query])
-        if len(vectors) != 1:
-            raise ValueError("Embedding provider must return one query vector.")
-        evidence = self._retriever.search(
-            EvidenceSearch(
-                query_embedding=vectors[0],
-                match_count=arguments.top_k,
-                match_threshold=arguments.minimum_similarity,
-                material_filter=arguments.material_filter,
-            )
-        )
-        return {
-            "query": arguments.query,
-            "evidence": [item.model_dump(mode="json") for item in evidence],
-        }
 
     def search_candidates(self, arguments: CandidateEvidenceArguments) -> dict:
         candidates = list(dict.fromkeys(arguments.candidates))

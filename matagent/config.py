@@ -6,22 +6,24 @@ from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 from matagent.llm import (
+    DeepSeekReportSynthesizer,
     DeepSeekRequirementParser,
     DeepSeekToolSelector,
     RequirementParser,
+    ReportSynthesizer,
     RuleBasedToolSelector,
     ToolSelector,
 )
 from matagent.llm.base import create_deepseek_client
 from matagent.llm.rule_based import RuleBasedRequirementParser
 from matagent.tools import MaterialsProjectSearchTool
-from matagent.rag import (
+from matagent.rag.client import SupabaseDataClient
+from matagent.rag.database import settings_from_environment
+from matagent.rag.embeddings import (
     EmbeddingSettings,
-    EvidenceRetriever,
     OpenAICompatibleEmbeddingProvider,
-    SupabaseDataClient,
-    settings_from_environment,
 )
+from matagent.rag.retriever import EvidenceRetriever
 from matagent.tools import ScientificEvidenceTool
 
 
@@ -87,11 +89,11 @@ class MaterialDataSettings:
 
 def build_llm_components(
     settings: LLMSettings,
-) -> tuple[RequirementParser, ToolSelector]:
+) -> tuple[RequirementParser, ToolSelector, ReportSynthesizer | None]:
     """Build the matching requirement parser and tool selector once."""
 
     if settings.mode == "offline":
-        return RuleBasedRequirementParser(), RuleBasedToolSelector()
+        return RuleBasedRequirementParser(), RuleBasedToolSelector(), None
     if settings.mode != "deepseek":
         raise ConfigurationError(f"Unsupported LLM mode: {settings.mode}")
     if not settings.api_key:
@@ -110,6 +112,7 @@ def build_llm_components(
     return (
         DeepSeekRequirementParser(**component_settings),
         DeepSeekToolSelector(**component_settings),
+        DeepSeekReportSynthesizer(**component_settings),
     )
 
 

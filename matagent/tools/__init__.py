@@ -9,7 +9,6 @@ from matagent.tools.schemas import (
     MaterialCandidate,
     ExcludedMaterial,
     MaterialSearchResult,
-    ScientificEvidenceArguments,
     ToolCallRequest,
     ToolExecutionResult,
 )
@@ -21,7 +20,6 @@ __all__ = [
     "MaterialCandidate",
     "ExcludedMaterial",
     "MaterialSearchResult",
-    "ScientificEvidenceArguments",
     "ScientificEvidenceTool",
     "MaterialsProjectSearchTool",
     "MockMaterialSearchTool",
