@@ -29,6 +29,8 @@ class FakeRetriever:
 
     def search(self, search):
         self.searches.append(search)
+        if search.material_filter is not None and search.material_filter != "SiC":
+            return []
         return [
             EvidenceChunk(
                 chunk_id=1,
@@ -115,8 +117,14 @@ class ScientificEvidenceToolTests(unittest.TestCase):
 
         self.assertEqual(len(embedding_provider.inputs), 1)
         self.assertEqual(len(embedding_provider.inputs[0]), 2)
-        self.assertEqual(len(retriever.searches), 2)
+        self.assertEqual(len(retriever.searches), 3)
+        self.assertEqual(
+            [search.material_filter for search in retriever.searches],
+            ["4H-SiC", "SiC", "GaN"],
+        )
         self.assertEqual(set(result["candidate_evidence"]), {"4H-SiC", "GaN"})
+        self.assertEqual(len(result["candidate_evidence"]["4H-SiC"]), 1)
+        self.assertEqual(result["candidate_evidence"]["GaN"], [])
 
     def test_graph_adds_attributable_evidence_to_report_and_trace(self) -> None:
         graph = build_graph(scientific_evidence_tool=FakeGraphEvidenceTool())

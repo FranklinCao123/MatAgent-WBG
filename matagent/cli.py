@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+import sys
 
 from matagent.config import (
     ConfigurationError,
@@ -24,7 +25,17 @@ from matagent.persistence import (
 DEFAULT_QUERY = "寻找适合高温功率电子器件的宽禁带半导体材料"
 
 
+def _configure_utf8_output() -> None:
+    """Keep scientific Unicode output portable on Windows terminals and pipes."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
+
+
 def main() -> None:
+    _configure_utf8_output()
     parser = argparse.ArgumentParser(
         description="Run the lightweight MatAgent-WBG local prototype."
     )

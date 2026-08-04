@@ -1,5 +1,7 @@
 """Tool adapter from a natural-language query to pgvector evidence."""
 
+import re
+
 from matagent.rag.embeddings import EmbeddingProvider
 from matagent.rag.retriever import EvidenceRetriever, EvidenceSearch
 from matagent.tools.schemas import (
@@ -51,14 +53,25 @@ class ScientificEvidenceTool:
 
         grouped = {}
         for candidate, vector in zip(candidates, vectors, strict=True):
-            evidence = self._retriever.search(
-                EvidenceSearch(
-                    query_embedding=vector,
-                    match_count=arguments.evidence_per_candidate,
-                    match_threshold=arguments.minimum_similarity,
-                    material_filter=None,
+            evidence_by_chunk = {}
+            for material_filter in _material_aliases(candidate):
+                evidence = self._retriever.search(
+                    EvidenceSearch(
+                        query_embedding=vector,
+                        match_count=arguments.evidence_per_candidate,
+                        match_threshold=arguments.minimum_similarity,
+                        material_filter=material_filter,
+                    )
                 )
-            )
+                for item in evidence:
+                    previous = evidence_by_chunk.get(item.chunk_id)
+                    if previous is None or item.similarity > previous.similarity:
+                        evidence_by_chunk[item.chunk_id] = item
+            evidence = sorted(
+                evidence_by_chunk.values(),
+                key=lambda item: item.similarity,
+                reverse=True,
+            )[: arguments.evidence_per_candidate]
             grouped[candidate] = [
                 item.model_dump(mode="json") for item in evidence
             ]
@@ -66,3 +79,15 @@ class ScientificEvidenceTool:
             "queries": dict(zip(candidates, queries, strict=True)),
             "candidate_evidence": grouped,
         }
+
+
+def _material_aliases(candidate: str) -> tuple[str, ...]:
+    """Return bounded exact database tags for common crystal-phase names."""
+
+    aliases = [candidate]
+    phase_free = re.sub(r"^(?:alpha|beta|[αβ])-", "", candidate, flags=re.I)
+    polytype_free = re.sub(r"^\d+[A-Za-z]-", "", phase_free)
+    for alias in (phase_free, polytype_free):
+        if alias and alias not in aliases:
+            aliases.append(alias)
+    return tuple(aliases)

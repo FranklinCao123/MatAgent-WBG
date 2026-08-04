@@ -52,7 +52,7 @@ def create_evidence_retrieval_node(
     def retrieve_evidence(state: AgentState) -> dict[str, Any]:
         candidate_names = list(
             dict.fromkeys(
-                candidate.get("formula") or candidate.get("name")
+                candidate.get("name") or candidate.get("formula")
                 for candidate in state.get("ranked_candidates", [])[:candidate_limit]
             )
         )
