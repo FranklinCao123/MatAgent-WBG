@@ -257,3 +257,25 @@ The command prints only the model name and returned dimension. It never prints
 the API key or embedding values. The provider batches inputs, preserves response
 order, and rejects malformed or dimensionally incompatible vectors before they
 reach PostgreSQL.
+
+## Document ingestion
+
+Run `sql/003_rag_ingestion.sql` in the Supabase SQL Editor. The RPC ingests one
+document and all of its chunks in a single PostgreSQL transaction. Re-ingesting
+the same DOI updates the document and replaces its old chunks.
+
+Ingest a UTF-8 text or Markdown document:
+
+```powershell
+python -m matagent.rag.ingest_document `
+  --file .\data\paper.txt `
+  --title "Paper title" `
+  --doi "10.xxxx/example" `
+  --source-url "https://example.org/paper" `
+  --year 2025 `
+  --material "4H-SiC"
+```
+
+The default chunker uses 1,800-character windows with 200-character overlap and
+prefers paragraph or sentence boundaries. PDF parsing is intentionally outside
+this module; source text must already be available as UTF-8 `.txt` or `.md`.

@@ -21,6 +21,14 @@ class EmbeddingError(RuntimeError):
 class EmbeddingProvider(Protocol):
     """Model-independent contract used by ingestion and retrieval."""
 
+    @property
+    def model_name(self) -> str:
+        """Stable model identifier stored with generated vectors."""
+
+    @property
+    def dimension(self) -> int:
+        """Number of values produced for each input text."""
+
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return one dense vector per input text, preserving input order."""
 
@@ -98,6 +106,14 @@ class OpenAICompatibleEmbeddingProvider:
     ) -> None:
         self.settings = settings
         self._client = client or _create_client(settings)
+
+    @property
+    def model_name(self) -> str:
+        return self.settings.model
+
+    @property
+    def dimension(self) -> int:
+        return self.settings.dimension
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:

@@ -22,11 +22,20 @@ from matagent.rag.retriever import (
     EvidenceRetriever,
     EvidenceSearch,
 )
+from matagent.rag.ingestion import (
+    CharacterTextChunker,
+    DocumentIngestor,
+    EvidenceIngestionError,
+    IngestionResult,
+    ScientificDocument,
+    TextChunk,
+)
 
 __all__ = [
     "DatabaseConfigurationError",
     "DatabaseHealth",
     "DatabaseHealthError",
+    "DocumentIngestor",
     "EMBEDDING_DIMENSION",
     "EmbeddingConfigurationError",
     "EmbeddingError",
@@ -35,9 +44,14 @@ __all__ = [
     "EvidenceChunk",
     "EvidenceRetriever",
     "EvidenceSearch",
+    "EvidenceIngestionError",
+    "IngestionResult",
     "SupabaseAPIError",
     "SupabaseDataClient",
     "SupabaseSettings",
+    "ScientificDocument",
+    "TextChunk",
+    "CharacterTextChunker",
     "OpenAICompatibleEmbeddingProvider",
     "check_database",
     "settings_from_environment",
