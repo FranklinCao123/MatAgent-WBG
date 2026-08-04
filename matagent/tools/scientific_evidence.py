@@ -54,7 +54,4 @@ class ScientificEvidenceTool:
             grouped[candidate] = [
                 item.model_dump(mode="json") for item in evidence
             ]
-        return {
-            "queries": dict(zip(candidates, queries, strict=True)),
-            "candidate_evidence": grouped,
-        }
+        return {"candidate_evidence": grouped}

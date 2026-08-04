@@ -232,12 +232,10 @@ def create_tool_execution_node(
 
             candidates.extend(output["candidates"])
             diagnostic = {
-                "source": output["source"],
                 "retrieved_count": output["retrieved_count"],
                 "accepted_count": len(output["candidates"]),
                 "excluded_count": len(output["excluded"]),
                 "excluded": output["excluded"],
-                "applied_filters": output["applied_filters"],
             }
             history.append(
                 {
