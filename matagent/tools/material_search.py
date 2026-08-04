@@ -13,11 +13,7 @@ from matagent.tools.schemas import (
 
 
 class MockMaterialSearchTool:
-    """Search a tiny JSON dataset through a stable tool interface.
-
-    A future Materials Project implementation can expose the same ``search``
-    method, allowing the graph to switch backends without changing its nodes.
-    """
+    """Search a tiny JSON dataset through the shared tool interface."""
 
     name = "mock_material_search"
 

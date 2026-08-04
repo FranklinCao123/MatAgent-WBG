@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
 
+from matagent.citations import normalize_doi
 from matagent.material_names import text_mentions_material
 from matagent.rag.semantic_scholar import LiteraturePaper, LiteratureSearchResult
 
@@ -94,7 +95,7 @@ class CorpusBootstrapper:
                 if reason:
                     rejected[reason] += 1
                     continue
-                doi_key = _normalize_doi(paper.doi)
+                doi_key = normalize_doi(paper.doi)
                 entry = by_doi.setdefault(
                     doi_key,
                     {"paper": paper, "materials": []},
@@ -142,11 +143,3 @@ def _build_query(material: str) -> str:
         f'"{material}" semiconductor thermal conductivity breakdown field '
         "high temperature power devices"
     )
-
-
-def _normalize_doi(doi: str) -> str:
-    normalized = doi.strip().lower()
-    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
-        if normalized.startswith(prefix):
-            normalized = normalized[len(prefix) :]
-    return normalized

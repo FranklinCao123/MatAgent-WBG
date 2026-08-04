@@ -275,6 +275,6 @@ def create_report_node(
 
 
 def generate_report(state: AgentState) -> dict:
-    """Backward-compatible deterministic report node used by offline tests."""
+    """Backward-compatible deterministic report node."""
 
     return create_report_node()(state)

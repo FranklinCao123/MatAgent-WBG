@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from matagent.citations import normalize_doi
 from matagent.llm.base import (
     ReportSynthesisError,
     RequirementParsingError,
@@ -184,7 +185,7 @@ class DeepSeekReportSynthesizer:
             ) from error
 
         allowed_dois = {
-            _normalize_doi(item["doi"])
+            normalize_doi(item["doi"])
             for items in evidence.values()
             for item in items
             if item.get("doi")
@@ -195,7 +196,7 @@ class DeepSeekReportSynthesizer:
                     "DeepSeek report referenced an unknown candidate."
                 )
             if any(
-                _normalize_doi(doi) not in allowed_dois
+                normalize_doi(doi) not in allowed_dois
                 for doi in assessment.evidence_dois
             ):
                 raise ReportSynthesisError("DeepSeek report invented a DOI citation.")
@@ -240,14 +241,6 @@ def _candidate_context(candidate: dict[str, Any]) -> dict[str, Any]:
         "material": candidate.get("name") or candidate.get("formula"),
         **{field: candidate.get(field) for field in fields},
     }
-
-
-def _normalize_doi(doi: str) -> str:
-    normalized = doi.strip().lower()
-    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
-        if normalized.startswith(prefix):
-            normalized = normalized[len(prefix) :]
-    return normalized
 
 
 def _load_json_object(content: str | None) -> dict[str, Any]:

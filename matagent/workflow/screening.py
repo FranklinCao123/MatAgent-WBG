@@ -9,20 +9,15 @@ from matagent.workflow.core import state_update
 
 DEFAULT_MAX_ENERGY_ABOVE_HULL_EV_ATOM = 0.1
 DEFAULT_MAX_DEVICE_ELEMENT_COUNT = 2
-DEFAULT_DEVICE_CHEMISTRY_EXCLUSIONS = (
+DEFAULT_DEVICE_ELEMENT_EXCLUSIONS = (
     # Molecular hydrides, halides, and noble-gas solids dominate a broad
     # band-gap query but are poor starting points for conventional power devices.
     "H", "F", "Cl", "Br", "I", "He", "Ne", "Ar", "Kr", "Xe",
-)
-DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS = (
+    # Radioactive elements are outside this device-screening baseline.
     "Tc", "Pm", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",
     "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr",
     "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl",
     "Mc", "Lv", "Ts", "Og",
-)
-DEFAULT_DEVICE_ELEMENT_EXCLUSIONS = (
-    *DEFAULT_DEVICE_CHEMISTRY_EXCLUSIONS,
-    *DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS,
 )
 
 

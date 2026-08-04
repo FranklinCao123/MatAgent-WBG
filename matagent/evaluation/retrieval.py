@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from matagent.citations import normalize_doi
+
 
 @dataclass(frozen=True)
 class RetrievalEvaluationCase:
@@ -43,8 +45,8 @@ def evaluate_retrieval(
     reciprocal_ranks = []
     hits = []
     for case in cases:
-        expected = {_normalize_doi(doi) for doi in case.expected_dois}
-        retrieved = [_normalize_doi(doi) for doi in case.retrieved_dois[:k]]
+        expected = {normalize_doi(doi) for doi in case.expected_dois}
+        retrieved = [normalize_doi(doi) for doi in case.retrieved_dois[:k]]
         relevant_positions = [
             index for index, doi in enumerate(retrieved, 1) if doi in expected
         ]
@@ -65,11 +67,3 @@ def evaluate_retrieval(
         mean_reciprocal_rank=sum(reciprocal_ranks) / count,
         hit_rate_at_k=sum(hits) / count,
     )
-
-
-def _normalize_doi(doi: str) -> str:
-    normalized = doi.strip().lower()
-    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
-        if normalized.startswith(prefix):
-            normalized = normalized[len(prefix) :]
-    return normalized
