@@ -226,3 +226,17 @@ python -m matagent.rag.check_database
 
 The command calls a restricted, read-only RPC and prints only the database name,
 PostgreSQL version, and pgvector version. It never prints the URL or secret key.
+
+## RAG evidence schema
+
+After the health check succeeds, run `sql/002_rag_evidence_store.sql` in the
+Supabase SQL Editor. It creates:
+
+- `rag_documents` for paper-level source metadata;
+- `rag_document_chunks` for traceable passages and 1024-dimensional vectors;
+- an HNSW cosine-distance index for approximate nearest-neighbor search;
+- `match_rag_chunks(...)`, a server-only similarity-search RPC.
+
+The dimension is fixed to the planned `BAAI/bge-m3` dense embedding contract.
+Embedding generation and document ingestion are separate modules and are not
+implemented in this migration.

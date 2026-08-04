@@ -1,13 +1,9 @@
 """Supabase Data API configuration and a safe RAG health check."""
 
-import json
 import os
-from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
-from urllib.error import HTTPError, URLError
+from typing import Any, Protocol
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 
@@ -18,6 +14,12 @@ class DatabaseConfigurationError(RuntimeError):
 
 class DatabaseHealthError(RuntimeError):
     """Raised when Supabase, PostgreSQL, or pgvector is unavailable."""
+
+
+class DataAPIPoster(Protocol):
+    """Minimal dependency accepted by the health check."""
+
+    def post(self, path: str, payload: dict[str, Any]) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -66,32 +68,25 @@ def settings_from_environment() -> SupabaseSettings:
 def check_database(
     settings: SupabaseSettings,
     *,
-    opener: Callable[..., Any] = urlopen,
+    client: DataAPIPoster | None = None,
 ) -> DatabaseHealth:
     """Call the restricted health RPC through Supabase's HTTPS Data API."""
 
-    request = Request(
-        f"{settings.url}/rest/v1/rpc/matagent_database_health",
-        data=b"{}",
-        headers={
-            "apikey": settings.secret_key,
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
+    # Import here avoids a module cycle: the reusable client uses SupabaseSettings.
+    from matagent.rag.client import SupabaseAPIError, SupabaseDataClient
+
+    data_client = client or SupabaseDataClient(settings)
     try:
-        with opener(request, timeout=15) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as error:
-        if error.code == 404:
+        payload = data_client.post(
+            "/rest/v1/rpc/matagent_database_health",
+            {},
+        )
+    except SupabaseAPIError as error:
+        if error.error_code == "PGRST202":
             detail = "Run sql/001_supabase_rag.sql in the Supabase SQL Editor."
         else:
-            detail = f"Supabase Data API returned HTTP {error.code}."
+            detail = str(error)
         raise DatabaseHealthError(detail) from error
-    except (URLError, TimeoutError, json.JSONDecodeError) as error:
-        raise DatabaseHealthError(
-            f"Supabase HTTPS health check failed ({type(error).__name__})."
-        ) from error
 
     row = payload[0] if isinstance(payload, list) and payload else payload
     if not isinstance(row, dict):

@@ -4,8 +4,10 @@ import json
 import unittest
 from unittest.mock import patch
 
+from matagent.rag.client import SupabaseAPIError, SupabaseDataClient
 from matagent.rag.database import (
     DatabaseConfigurationError,
+    DatabaseHealthError,
     SupabaseSettings,
     check_database,
     settings_from_environment,
@@ -44,7 +46,8 @@ class DatabaseHealthTests(unittest.TestCase):
             url="https://project.supabase.co",
             secret_key="secret-not-used",
         )
-        health = check_database(settings, opener=fake_open)
+        client = SupabaseDataClient(settings, opener=fake_open)
+        health = check_database(settings, client=client)
 
         self.assertEqual(health.database_name, "postgres")
         self.assertEqual(health.vector_version, "0.8.1")
@@ -59,6 +62,22 @@ class DatabaseHealthTests(unittest.TestCase):
             captured["request"].get_header("Apikey"), "secret-not-used"
         )
         self.assertIsNone(captured["request"].get_header("Authorization"))
+
+    def test_missing_health_rpc_has_actionable_error(self) -> None:
+        class MissingRPCClient:
+            def post(self, path, payload):
+                raise SupabaseAPIError(
+                    "safe error",
+                    status_code=404,
+                    error_code="PGRST202",
+                )
+
+        settings = SupabaseSettings(
+            url="https://project.supabase.co",
+            secret_key="secret-not-used",
+        )
+        with self.assertRaisesRegex(DatabaseHealthError, "001_supabase_rag.sql"):
+            check_database(settings, client=MissingRPCClient())
 
     def test_environment_requires_both_settings(self) -> None:
         with patch("matagent.rag.database.load_dotenv"), patch.dict(
