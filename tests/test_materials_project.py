@@ -44,6 +44,7 @@ def sample_payload() -> dict:
                 "band_gap": 3.0,
                 "is_stable": True,
                 "is_metal": False,
+                "theoretical": False,
                 "energy_above_hull": 0.0,
                 "formation_energy_per_atom": -1.0,
             },
@@ -54,6 +55,7 @@ def sample_payload() -> dict:
                 "band_gap": 3.5,
                 "is_stable": True,
                 "is_metal": False,
+                "theoretical": False,
                 "energy_above_hull": 0.0,
                 "formation_energy_per_atom": -2.0,
             },
@@ -64,6 +66,7 @@ def sample_payload() -> dict:
                 "band_gap": 4.2,
                 "is_stable": False,
                 "is_metal": False,
+                "theoretical": False,
                 "energy_above_hull": 0.05,
                 "formation_energy_per_atom": -1.5,
             },
@@ -74,6 +77,7 @@ def sample_payload() -> dict:
                 "band_gap": 6.0,
                 "is_stable": True,
                 "is_metal": False,
+                "theoretical": False,
                 "energy_above_hull": 0.0,
                 "formation_energy_per_atom": -4.0,
             },
@@ -97,6 +101,8 @@ class MaterialsProjectSearchTests(unittest.TestCase):
                 band_gap_operator=">",
                 exclude_elements=["Ac"],
                 require_nonmetal=True,
+                require_experimental=True,
+                maximum_element_count=2,
                 maximum_energy_above_hull_ev_atom=0.1,
             )
         )
@@ -121,12 +127,15 @@ class MaterialsProjectSearchTests(unittest.TestCase):
                 "band_gap",
                 "is_stable",
                 "is_metal",
+                "theoretical",
                 "energy_above_hull",
                 "formation_energy_per_atom",
             ],
         )
         self.assertEqual(query["exclude_elements"], ["Ac"])
         self.assertEqual(query["is_metal"], ["false"])
+        self.assertEqual(query["theoretical"], ["false"])
+        self.assertEqual(query["nelements_max"], ["2"])
         self.assertEqual(query["energy_above_hull_max"], ["0.1"])
         self.assertEqual(query["_sort_fields"], ["energy_above_hull"])
         self.assertNotIn("test-secret", opener.request.full_url)
@@ -178,7 +187,10 @@ class MaterialsProjectSearchTests(unittest.TestCase):
             item for item in result["tool_history"] if item["step"] == "decide_tools"
         )["calls"][0]
         self.assertIn("Ac", decided_call["arguments"]["exclude_elements"])
+        self.assertIn("Ar", decided_call["arguments"]["exclude_elements"])
         self.assertTrue(decided_call["arguments"]["require_nonmetal"])
+        self.assertTrue(decided_call["arguments"]["require_experimental"])
+        self.assertEqual(decided_call["arguments"]["maximum_element_count"], 2)
         self.assertIn("Materials Project screening ranking", result["final_report"])
         self.assertIn("Candidate filtering", result["final_report"])
         self.assertNotIn("Demo score", result["final_report"])
@@ -204,6 +216,42 @@ class MaterialsProjectSearchTests(unittest.TestCase):
 
         self.assertLessEqual(len(",".join(selected)), 60)
         self.assertEqual(selected, elements[: len(selected)])
+
+    def test_local_validation_rejects_theoretical_and_complex_entries(self) -> None:
+        payload = sample_payload()
+        payload["data"] = [
+            {
+                **payload["data"][1],
+                "material_id": "mp-theory",
+                "theoretical": True,
+            },
+            {
+                **payload["data"][1],
+                "material_id": "mp-complex",
+                "elements": ["Al", "Ga", "N", "O"],
+            },
+        ]
+        tool = MaterialsProjectSearchTool(
+            api_key="test-secret",
+            opener=RecordingOpener(payload),
+        )
+
+        result = tool.search(
+            MaterialSearchArguments(
+                band_gap_threshold_ev=3.0,
+                band_gap_operator=">",
+                require_experimental=True,
+                maximum_element_count=2,
+            )
+        )
+
+        self.assertEqual(result["candidates"], [])
+        reasons = {
+            item["material_id"]: " ".join(item["reasons"])
+            for item in result["excluded"]
+        }
+        self.assertIn("theoretical", reasons["mp-theory"])
+        self.assertIn("more than 2", reasons["mp-complex"])
 
 
 if __name__ == "__main__":

@@ -72,6 +72,8 @@ class CandidateFilterPolicy(BaseModel):
 
     exclude_elements: list[str] = Field(default_factory=list)
     require_nonmetal: bool = False
+    require_experimental: bool = False
+    maximum_element_count: int | None = Field(default=None, ge=1)
     maximum_energy_above_hull_ev_atom: float | None = Field(default=None, ge=0)
     rationale: dict[str, str] = Field(default_factory=dict)
 

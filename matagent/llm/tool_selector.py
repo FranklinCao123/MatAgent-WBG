@@ -83,8 +83,8 @@ class DeepSeekToolSelector:
         context = {
             "user_query": user_query,
             "validated_requirements": requirements.model_dump(mode="json"),
-            "ranking_plan": ranking_plan.model_dump(mode="json"),
         }
+        del ranking_plan
         messages = [
             {
                 "role": "system",

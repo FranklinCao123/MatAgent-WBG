@@ -24,6 +24,7 @@ SUMMARY_FIELDS = (
     "band_gap",
     "is_stable",
     "is_metal",
+    "theoretical",
     "energy_above_hull",
     "formation_energy_per_atom",
 )
@@ -72,6 +73,10 @@ class MaterialsProjectSearchTool:
             )
         if arguments.require_nonmetal:
             query_parameters["is_metal"] = "false"
+        if arguments.require_experimental:
+            query_parameters["theoretical"] = "false"
+        if arguments.maximum_element_count is not None:
+            query_parameters["nelements_max"] = arguments.maximum_element_count
         if arguments.maximum_energy_above_hull_ev_atom is not None:
             query_parameters["energy_above_hull_max"] = (
                 arguments.maximum_energy_above_hull_ev_atom
@@ -124,6 +129,7 @@ class MaterialsProjectSearchTool:
                     band_gap_ev=document["band_gap"],
                     is_stable=document.get("is_stable"),
                     is_metal=document.get("is_metal"),
+                    theoretical=document.get("theoretical"),
                     energy_above_hull_ev_atom=document.get("energy_above_hull"),
                     formation_energy_per_atom_ev=document.get(
                         "formation_energy_per_atom"
@@ -160,6 +166,8 @@ class MaterialsProjectSearchTool:
                 "exclude_elements": arguments.exclude_elements,
                 "server_exclude_elements": server_excluded_elements,
                 "require_nonmetal": arguments.require_nonmetal,
+                "require_experimental": arguments.require_experimental,
+                "maximum_element_count": arguments.maximum_element_count,
                 "maximum_energy_above_hull_ev_atom": (
                     arguments.maximum_energy_above_hull_ev_atom
                 ),
@@ -223,6 +231,16 @@ class MaterialsProjectSearchTool:
                 reasons.append("Materials Project classifies the entry as metallic")
             elif candidate.is_metal is None:
                 reasons.append("metallicity classification is unavailable")
+
+        if arguments.require_experimental:
+            if candidate.theoretical is True:
+                reasons.append("entry is theoretical rather than experimentally reported")
+            elif candidate.theoretical is None:
+                reasons.append("experimental/theoretical classification is unavailable")
+
+        maximum_elements = arguments.maximum_element_count
+        if maximum_elements is not None and len(candidate.elements) > maximum_elements:
+            reasons.append(f"contains more than {maximum_elements} elements")
 
         maximum_hull = arguments.maximum_energy_above_hull_ev_atom
         if maximum_hull is not None:

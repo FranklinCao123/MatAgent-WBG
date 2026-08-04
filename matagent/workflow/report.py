@@ -68,15 +68,17 @@ def _generate_base_report(state: AgentState) -> str:
     elif plan:
         filters = plan.candidate_filters
         items = [
-            "- Ranking order: stable entries, lower energy above hull, then higher "
-            "band gap.",
+            "- Ranking order: device-relevant chemistry class, stability, lower "
+            "energy above hull, then higher band gap.",
             *[f"- {item}" for item in plan.inferred_requirements],
         ]
         if filters:
             items += [
-                "- Hard filters: nonmetallic entries; energy above hull <= "
-                f"{filters.maximum_energy_above_hull_ev_atom} eV/atom; exclude "
-                f"{len(filters.exclude_elements)} radioactive-element symbols.",
+                "- Hard filters: nonmetallic, experimentally observed entries; "
+                f"at most {filters.maximum_element_count} elements; energy above hull <= "
+                f"{filters.maximum_energy_above_hull_ev_atom} eV/atom.",
+                "- Device-chemistry baseline excludes hydrides, halides, noble-gas "
+                "solids, and radioactive elements.",
                 "- Full filter arguments are available in the execution trace.",
             ]
         _section(lines, "Screening plan", items)

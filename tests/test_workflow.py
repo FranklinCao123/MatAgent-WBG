@@ -164,6 +164,8 @@ class DeepSeekToolSelectorTests(unittest.TestCase):
         self.assertEqual(calls[0].arguments["band_gap_operator"], ">")
         self.assertEqual(client.last_request["tool_choice"], "auto")
         self.assertIn("tools", client.last_request)
+        context = json.loads(client.last_request["messages"][1]["content"])
+        self.assertNotIn("ranking_plan", context)
 
     def test_invalid_tool_argument_json_is_rejected(self) -> None:
         raw_call = SimpleNamespace(

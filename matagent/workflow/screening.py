@@ -8,11 +8,21 @@ from matagent.workflow.core import state_update
 
 
 DEFAULT_MAX_ENERGY_ABOVE_HULL_EV_ATOM = 0.1
+DEFAULT_MAX_DEVICE_ELEMENT_COUNT = 2
+DEFAULT_DEVICE_CHEMISTRY_EXCLUSIONS = (
+    # Molecular hydrides, halides, and noble-gas solids dominate a broad
+    # band-gap query but are poor starting points for conventional power devices.
+    "H", "F", "Cl", "Br", "I", "He", "Ne", "Ar", "Kr", "Xe",
+)
 DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS = (
     "Tc", "Pm", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",
     "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr",
     "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl",
     "Mc", "Lv", "Ts", "Og",
+)
+DEFAULT_DEVICE_ELEMENT_EXCLUSIONS = (
+    *DEFAULT_DEVICE_CHEMISTRY_EXCLUSIONS,
+    *DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS,
 )
 
 
@@ -57,14 +67,26 @@ def plan_screening(state: AgentState) -> dict[str, Any]:
         plan = RankingPlan(
             strategy="materials_project_stability",
             candidate_filters=CandidateFilterPolicy(
-                exclude_elements=list(DEFAULT_RADIOACTIVE_ELEMENT_EXCLUSIONS),
+                exclude_elements=list(DEFAULT_DEVICE_ELEMENT_EXCLUSIONS),
                 require_nonmetal=True,
+                require_experimental=True,
+                maximum_element_count=DEFAULT_MAX_DEVICE_ELEMENT_COUNT,
                 maximum_energy_above_hull_ev_atom=(
                     DEFAULT_MAX_ENERGY_ABOVE_HULL_EV_ATOM
                 ),
                 rationale={
-                    "exclude_elements": "Exclude radioactive elements by default.",
+                    "exclude_elements": (
+                        "Exclude radioactive elements plus hydrides, halides, and "
+                        "noble-gas solids from the conventional device baseline."
+                    ),
                     "require_nonmetal": "The target application is semiconducting.",
+                    "require_experimental": (
+                        "Prefer entries linked to experimentally reported structures."
+                    ),
+                    "maximum_element_count": (
+                        "Limit the first-pass search to unary and binary "
+                        "materials for a compact, interpretable candidate space."
+                    ),
                     "maximum_energy_above_hull_ev_atom": (
                         "Allow modest metastability up to 0.1 eV/atom."
                     ),
@@ -119,9 +141,22 @@ def rank_candidates(state: AgentState) -> dict[str, Any]:
 
     plan = state["ranking_plan"]
     if plan.strategy == "materials_project_stability":
+        def chemistry_priority(material: dict[str, Any]) -> int:
+            """Prefer common covalent WBG families without naming materials."""
+
+            elements = set(material.get("elements", []))
+            if len(elements) == 1 and elements == {"C"}:
+                return 0
+            if len(elements) == 2 and elements.intersection({"C", "N"}):
+                return 1
+            if len(elements) == 2 and "O" in elements:
+                return 2
+            return 3
+
         def sort_key(material: dict[str, Any]) -> tuple:
             hull = material.get("energy_above_hull_ev_atom")
             return (
+                chemistry_priority(material),
                 material.get("is_stable") is not True,
                 float("inf") if hull is None else hull,
                 -material["band_gap_ev"],
@@ -132,6 +167,7 @@ def rank_candidates(state: AgentState) -> dict[str, Any]:
             "step": "rank_candidates",
             "type": "lexicographic_stability_rule",
             "criteria": [
+                "device chemistry: C, binary carbides/nitrides, binary oxides, other",
                 "is_stable descending",
                 "energy_above_hull ascending",
                 "band_gap_ev descending",

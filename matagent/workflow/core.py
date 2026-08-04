@@ -152,6 +152,8 @@ def create_tool_decision_node(
                 enforced = {
                     "exclude_elements": filters.exclude_elements,
                     "require_nonmetal": filters.require_nonmetal,
+                    "require_experimental": filters.require_experimental,
+                    "maximum_element_count": filters.maximum_element_count,
                     "maximum_energy_above_hull_ev_atom": (
                         filters.maximum_energy_above_hull_ev_atom
                     ),

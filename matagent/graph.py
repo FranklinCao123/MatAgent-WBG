@@ -80,6 +80,16 @@ def build_graph(
         handler=search_tool.search,
     )
     tool_specs = registry.tool_specs()
+    # The LLM decides only the user-facing search intent. Domain safety and
+    # scientific baseline filters are injected deterministically by the graph.
+    search_schema = tool_specs[0]["function"]["parameters"]
+    public_fields = {"band_gap_threshold_ev", "band_gap_operator"}
+    search_schema["properties"] = {
+        name: schema
+        for name, schema in search_schema["properties"].items()
+        if name in public_fields
+    }
+    search_schema["required"] = sorted(public_fields)
     if scientific_evidence_tool is not None:
         registry.register(
             name="retrieve_candidate_evidence",
