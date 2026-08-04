@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -23,6 +24,8 @@ class SemanticScholarSettings:
     api_key: str | None = field(default=None, repr=False)
     base_url: str = "https://api.semanticscholar.org/graph/v1"
     timeout_seconds: float = 20.0
+    max_retries: int = 3
+    retry_backoff_seconds: float = 2.0
 
     @classmethod
     def from_environment(cls) -> "SemanticScholarSettings":
@@ -34,6 +37,10 @@ class SemanticScholarSettings:
                 "https://api.semanticscholar.org/graph/v1",
             ).rstrip("/"),
             timeout_seconds=float(os.getenv("MATAGENT_S2_TIMEOUT_SECONDS", "20")),
+            max_retries=int(os.getenv("MATAGENT_S2_MAX_RETRIES", "3")),
+            retry_backoff_seconds=float(
+                os.getenv("MATAGENT_S2_RETRY_BACKOFF_SECONDS", "2")
+            ),
         )
 
 
@@ -102,9 +109,20 @@ FIELDS = ",".join(
 class SemanticScholarClient:
     """Read-only, bounded client for paper search and paper details."""
 
-    def __init__(self, settings: SemanticScholarSettings, *, opener=urlopen) -> None:
+    def __init__(
+        self,
+        settings: SemanticScholarSettings,
+        *,
+        opener=urlopen,
+        sleeper=time.sleep,
+    ) -> None:
+        if not 0 <= settings.max_retries <= 5:
+            raise ValueError("Semantic Scholar max_retries must be between 0 and 5.")
+        if settings.retry_backoff_seconds < 1.0:
+            raise ValueError("Semantic Scholar retry backoff must be at least 1 s.")
         self._settings = settings
         self._opener = opener
+        self._sleeper = sleeper
 
     def search(self, query: str, *, limit: int = 5) -> LiteratureSearchResult:
         if not query.strip():
@@ -141,30 +159,44 @@ class SemanticScholarClient:
             f"{self._settings.base_url}{path}?{urlencode(parameters)}",
             headers=headers,
         )
-        try:
-            with self._opener(
-                request,
-                timeout=self._settings.timeout_seconds,
-            ) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except HTTPError as error:
-            if error.code == 429:
-                detail = (
-                    "Semantic Scholar rate limit reached; configure "
-                    "MATAGENT_S2_API_KEY for authenticated requests."
-                )
-            else:
-                detail = f"Semantic Scholar returned HTTP {error.code}."
-            raise LiteratureSourceError(
-                detail
-            ) from error
-        except (URLError, TimeoutError, json.JSONDecodeError) as error:
-            raise LiteratureSourceError(
-                f"Semantic Scholar request failed ({type(error).__name__})."
-            ) from error
+        for attempt in range(self._settings.max_retries + 1):
+            try:
+                with self._opener(
+                    request,
+                    timeout=self._settings.timeout_seconds,
+                ) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                break
+            except HTTPError as error:
+                if error.code == 429 and attempt < self._settings.max_retries:
+                    self._sleeper(self._retry_delay(error, attempt))
+                    continue
+                if error.code == 429:
+                    authentication = (
+                        "authenticated key is still being throttled"
+                        if self._settings.api_key
+                        else "configure MATAGENT_S2_API_KEY"
+                    )
+                    detail = f"Semantic Scholar rate limit reached; {authentication}."
+                else:
+                    detail = f"Semantic Scholar returned HTTP {error.code}."
+                raise LiteratureSourceError(detail) from error
+            except (URLError, TimeoutError, json.JSONDecodeError) as error:
+                raise LiteratureSourceError(
+                    f"Semantic Scholar request failed ({type(error).__name__})."
+                ) from error
         if not isinstance(payload, dict):
             raise LiteratureSourceError("Semantic Scholar returned invalid data.")
         return payload
+
+    def _retry_delay(self, error: HTTPError, attempt: int) -> float:
+        retry_after = error.headers.get("Retry-After") if error.headers else None
+        try:
+            server_delay = float(retry_after) if retry_after is not None else None
+        except ValueError:
+            server_delay = None
+        delay = server_delay or self._settings.retry_backoff_seconds * (2**attempt)
+        return min(max(delay, 1.0), 60.0)
 
 
 def _parse_papers(rows: list[dict[str, Any]]) -> tuple[list[LiteraturePaper], int]:

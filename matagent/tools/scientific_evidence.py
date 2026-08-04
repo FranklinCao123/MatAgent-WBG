@@ -1,7 +1,6 @@
 """Tool adapter from a natural-language query to pgvector evidence."""
 
-import re
-
+from matagent.material_names import material_aliases
 from matagent.rag.embeddings import EmbeddingProvider
 from matagent.rag.retriever import EvidenceRetriever, EvidenceSearch
 from matagent.tools.schemas import (
@@ -54,7 +53,7 @@ class ScientificEvidenceTool:
         grouped = {}
         for candidate, vector in zip(candidates, vectors, strict=True):
             evidence_by_chunk = {}
-            for material_filter in _material_aliases(candidate):
+            for material_filter in material_aliases(candidate):
                 evidence = self._retriever.search(
                     EvidenceSearch(
                         query_embedding=vector,
@@ -79,15 +78,3 @@ class ScientificEvidenceTool:
             "queries": dict(zip(candidates, queries, strict=True)),
             "candidate_evidence": grouped,
         }
-
-
-def _material_aliases(candidate: str) -> tuple[str, ...]:
-    """Return bounded exact database tags for common crystal-phase names."""
-
-    aliases = [candidate]
-    phase_free = re.sub(r"^(?:alpha|beta|[αβ])-", "", candidate, flags=re.I)
-    polytype_free = re.sub(r"^\d+[A-Za-z]-", "", phase_free)
-    for alias in (phase_free, polytype_free):
-        if alias and alias not in aliases:
-            aliases.append(alias)
-    return tuple(aliases)

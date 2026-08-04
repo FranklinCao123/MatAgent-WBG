@@ -20,6 +20,7 @@ as $$
 declare
     stored_document_id uuid;
     normalized_doi text := nullif(btrim(document_doi), '');
+    existing_material_names text[] := '{}'::text[];
 begin
     if jsonb_typeof(chunks) is distinct from 'array'
        or jsonb_array_length(chunks) = 0 then
@@ -62,6 +63,15 @@ begin
         )
         returning id into stored_document_id;
     else
+        select coalesce(
+            array_agg(distinct material_name.value),
+            '{}'::text[]
+        )
+        into existing_material_names
+        from public.rag_document_chunks as existing_chunk
+        cross join lateral unnest(existing_chunk.material_names) as material_name(value)
+        where existing_chunk.document_id = stored_document_id;
+
         update public.rag_documents
         set
             title = document_title,
@@ -92,13 +102,16 @@ begin
         item.element->>'content',
         (item.element->>'token_count')::integer,
         (item.element->>'embedding')::extensions.vector(1024),
-        coalesce(
-            array(
+        array(
+            select distinct combined.name
+            from (
+                select unnest(existing_material_names) as name
+                union all
                 select jsonb_array_elements_text(
                     item.element->'material_names'
-                )
-            ),
-            '{}'::text[]
+                ) as name
+            ) as combined
+            where btrim(combined.name) <> ''
         ),
         coalesce(item.element->'metadata', '{}'::jsonb)
     from jsonb_array_elements(chunks) as item(element);

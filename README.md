@@ -303,6 +303,25 @@ receive HTTP 429 rate limits. Configure `MATAGENT_S2_API_KEY` for reliable
 authenticated access. Search never writes to the database; only the explicit
 `ingest` subcommand generates embeddings and writes evidence.
 
+For a controlled multi-material corpus, first generate a dry-run plan:
+
+```powershell
+python -m matagent.rag.literature_cli bootstrap `
+  --material Diamond --material AlN --material beta-Ga2O3 `
+  --material 4H-SiC --material GaN `
+  --papers-per-material 2 --search-limit 10
+```
+
+The planner spaces Semantic Scholar requests by at least one second, requires a
+DOI and sufficiently long abstract, rejects records that do not mention the
+material, rejects future publication years, and merges duplicate DOIs across
+materials. The preview includes venue, citation count, and open-access status.
+Review the plan, then repeat the command with `--write` to generate embeddings
+and persist it. Each paper is atomically upserted by DOI; re-ingestion preserves
+existing material tags. If `sql/003_rag_ingestion.sql` was installed before this
+behavior was added, run it once more in the Supabase SQL Editor. HTTP 429
+responses use bounded `Retry-After` or exponential-backoff retries.
+
 ## Agent RAG retrieval
 
 Enable query-time evidence retrieval explicitly:

@@ -2,6 +2,8 @@
 
 import json
 import unittest
+from io import BytesIO
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
 from matagent.rag.semantic_scholar import (
@@ -41,6 +43,34 @@ def paper_row(*, abstract="Measured thermal transport.", doi="10.1/example"):
 
 
 class SemanticScholarTests(unittest.TestCase):
+    def test_rate_limit_retries_with_server_delay(self) -> None:
+        attempts = []
+        sleeps = []
+
+        def rate_limited_then_success(request, timeout):
+            attempts.append(request)
+            if len(attempts) == 1:
+                raise HTTPError(
+                    request.full_url,
+                    429,
+                    "rate limited",
+                    {"Retry-After": "1.5"},
+                    BytesIO(b"{}"),
+                )
+            return FakeResponse({"total": 1, "data": [paper_row()]})
+
+        client = SemanticScholarClient(
+            SemanticScholarSettings(api_key="secret-not-used"),
+            opener=rate_limited_then_success,
+            sleeper=sleeps.append,
+        )
+
+        result = client.search("SiC power devices", limit=1)
+
+        self.assertEqual(len(result.papers), 1)
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(sleeps, [1.5])
+
     def test_search_is_bounded_and_skips_unattributable_records(self) -> None:
         captured = {}
 

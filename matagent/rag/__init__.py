@@ -1,5 +1,10 @@
 """Retrieval infrastructure for scientific evidence."""
 
+from matagent.rag.bootstrap import (
+    BootstrapPlan,
+    BootstrapSelection,
+    CorpusBootstrapper,
+)
 from matagent.rag.client import SupabaseAPIError, SupabaseDataClient
 from matagent.rag.database import (
     DatabaseConfigurationError,
@@ -39,6 +44,9 @@ from matagent.rag.semantic_scholar import (
 )
 
 __all__ = [
+    "BootstrapPlan",
+    "BootstrapSelection",
+    "CorpusBootstrapper",
     "DatabaseConfigurationError",
     "DatabaseHealth",
     "DatabaseHealthError",
