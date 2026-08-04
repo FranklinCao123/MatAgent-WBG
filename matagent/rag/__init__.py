@@ -30,6 +30,13 @@ from matagent.rag.ingestion import (
     ScientificDocument,
     TextChunk,
 )
+from matagent.rag.semantic_scholar import (
+    LiteraturePaper,
+    LiteratureSearchResult,
+    LiteratureSourceError,
+    SemanticScholarClient,
+    SemanticScholarSettings,
+)
 
 __all__ = [
     "DatabaseConfigurationError",
@@ -46,10 +53,15 @@ __all__ = [
     "EvidenceSearch",
     "EvidenceIngestionError",
     "IngestionResult",
+    "LiteraturePaper",
+    "LiteratureSearchResult",
+    "LiteratureSourceError",
     "SupabaseAPIError",
     "SupabaseDataClient",
     "SupabaseSettings",
     "ScientificDocument",
+    "SemanticScholarClient",
+    "SemanticScholarSettings",
     "TextChunk",
     "CharacterTextChunker",
     "OpenAICompatibleEmbeddingProvider",

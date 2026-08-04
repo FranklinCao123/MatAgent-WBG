@@ -279,3 +279,26 @@ python -m matagent.rag.ingest_document `
 The default chunker uses 1,800-character windows with 200-character overlap and
 prefers paragraph or sentence boundaries. PDF parsing is intentionally outside
 this module; source text must already be available as UTF-8 `.txt` or `.md`.
+
+## Literature discovery
+
+Preview a small, relevance-ranked set of Semantic Scholar records before any
+database write:
+
+```powershell
+python -m matagent.rag.literature_cli search `
+  "wide bandgap semiconductor thermal conductivity" --limit 5
+```
+
+Only records containing both an abstract and DOI are shown as usable. After
+reviewing the title, DOI, year, and open-access status, ingest one selected paper:
+
+```powershell
+python -m matagent.rag.literature_cli ingest PAPER_ID `
+  --material "4H-SiC"
+```
+
+The API key is optional at the protocol level, but unauthenticated requests can
+receive HTTP 429 rate limits. Configure `MATAGENT_S2_API_KEY` for reliable
+authenticated access. Search never writes to the database; only the explicit
+`ingest` subcommand generates embeddings and writes evidence.
