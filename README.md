@@ -206,3 +206,23 @@ make paid API calls:
 ```powershell
 python -m unittest discover -s tests -v
 ```
+
+## RAG database health check
+
+This prototype reaches Supabase PostgreSQL through the HTTPS Data API, avoiding
+a direct port-5432 dependency. First run `sql/001_supabase_rag.sql` in the
+Supabase SQL Editor. Then configure these server-only values in `.env`:
+
+```dotenv
+MATAGENT_SUPABASE_URL=https://your-project.supabase.co
+MATAGENT_SUPABASE_SECRET_KEY=sb_secret_your_key
+```
+
+Run:
+
+```powershell
+python -m matagent.rag.check_database
+```
+
+The command calls a restricted, read-only RPC and prints only the database name,
+PostgreSQL version, and pgvector version. It never prints the URL or secret key.
